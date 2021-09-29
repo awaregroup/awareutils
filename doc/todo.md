@@ -1,0 +1,28 @@
+# TODO
+
+- Now:
+  - Add OpenCV dependency
+- Admin:
+  - black/flake8 config and generally nicer build stuff.
+  - build pipeline in github.
+- Performance:
+  - Cythonize some of the shape stuff (coordinate checking etc.) to keep that fast.
+  - Memoise calls like shape.center or shape.mask so if it's called a second time it's cached.
+- Features:
+  - Drawing:
+    - Custom color classes? Again, BGR vs RGB. Maybe just use palletable so we get nice color palettes too.
+    - Add shape drawing methods
+      - `fill` and `border`
+      - nicer text! add some cool fonts?
+      - allow passing above color classes, or e.g. a single `255` means all pixels `255` etc.
+      - Check contiguous if using OpenCV drawing to ensure arrays are drawn on inplace
+  - Question: Pass through PIL/ndarray functionality to underlying image? E.g. allow `Img` to be indexed if source is array? Leaning towards 'no' as e.g. in this case user can just do `Img.bgr()` and then know it's an array (and this will also work if for some reason they change to using PIL `Img` instead).
+  - OpenCV:
+    - Automatically search USB devices if you don't know which number (as it's a bit weird) ...
+    - Automatically search supported fourcc in videowriter (or does -1 do that?). At least find some good fourcc defaults.
+  - Add fast video seeking to FileCapture.
+  - Shape:
+    - `shape.bounding_box` method
+    - `shape.mask` method
+  - Add v4l2 loopback videowriter
+  - Using a 2d mask on a 3d image. Or maybe just have a `shape.mask3d()` method.
