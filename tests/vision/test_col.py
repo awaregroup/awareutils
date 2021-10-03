@@ -15,8 +15,16 @@ def test_col_is_rgb_args():
     assert col.b == 3
 
 
-def test_diverging_pallete():
+def test_diverging_pallete_specified_labels():
     p = DivergingPalette(labels=[str(i) for i in range(100)])
+    assert p.col("0") != p.col("1")
+    assert p.col("0") == p.col("12")
+
+
+def test_diverging_pallete_unspecified_labels():
+    p = DivergingPalette()
+    for i in range(100):
+        p.col(str(i))
     assert p.col("0") != p.col("1")
     assert p.col("0") == p.col("12")
 

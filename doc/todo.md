@@ -1,9 +1,11 @@
 # TODO
 
+- Fix import issues
+- consider a `draw` modules which is `draw(shape, img)`.
 - Now:
   - Add OpenCV dependency
 - Admin:
-  - black/flake8 config and generally nicer build stuff.
+  - flake8 config and generally nicer build stuff.
   - build pipeline in github.
 - Performance:
   - Cythonize some of the shape stuff (coordinate checking etc.) to keep that fast.

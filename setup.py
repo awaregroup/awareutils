@@ -17,5 +17,5 @@ setup(
     name="awareutils",
     packages=find_packages(),
     version=version,  # NOQA
-    install_requires=["piexif>=1.1.3", "pillow>=7.2.0", "numpy>=1.19"],
+    install_requires=["piexif>=1.1.3", "pillow>=7.2.0", "numpy>=1.19", "loguru>=0.5.3", "opencv-python>=4.5.*"],
 )

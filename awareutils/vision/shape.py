@@ -2,18 +2,37 @@ from abc import ABCMeta, abstractmethod, abstractproperty
 from typing import List, Optional
 
 import numpy as np
+from awareutils.vision.img import Img
 from awareutils.vision.img_size import ImgSize
 from loguru import logger
 
 
+def img_operation(f):
+    """
+    Wrapper to pass when the first argument is the img, and the rest are whatever. I.e. signature should be 
+        f(self, img: Img, *, ...)
+    Basically just checks the img.size attribute matches our size.
+    """
+
+    def wrapper(*args, **kwargs):
+        self = args[0]
+        img = args[1]
+        if not isinstance(img, Img):
+            raise ValueError("'img' must be an Img")
+        if img.size != self._img_size:
+            raise RuntimeError(
+                (
+                    "This img has a different size to the img this shape was defined with i.e. the coordinate systems"
+                    " don't match. Consider using shape.project() first."
+                )
+            )
+        return f(*args, **kwargs)
+
+    return wrapper
+
+
 class Shape(metaclass=ABCMeta):
-    def __init__(
-        self,
-        *,
-        img_size: ImgSize,
-        clip: bool = False,
-        fix_numeric_type: bool = True,
-    ):
+    def __init__(self, *, img_size: ImgSize, clip: bool = False, fix_numeric_type: bool = True):
         self._img_size = img_size
         self._clip = clip
         self._fix_numeric_type = fix_numeric_type
@@ -87,6 +106,16 @@ class Shape(metaclass=ABCMeta):
 
     def _validate_y(self, y: int) -> int:
         return self._validate_coordinate(d=y, maximum=self._img_size.h - 1)
+
+    # @img_operation
+    # @abstractmethod
+    # def fill(self, img: Img, *, color) -> None:
+    #     pass
+
+    # @img_operation
+    # @abstractmethod
+    # def outline(self, img: Img) -> None:
+    #     pass
 
 
 class Pixel(Shape):
@@ -264,14 +293,7 @@ class Rectangle(Shape):
 
 
 class Polygon(Shape):
-    def __init__(
-        self,
-        *,
-        pixels: List[Pixel],
-        img_size: ImgSize,
-        clip: bool = False,
-        fix_numeric_type: bool = True,
-    ):
+    def __init__(self, *, pixels: List[Pixel], img_size: ImgSize, clip: bool = False, fix_numeric_type: bool = True):
 
         super().__init__(img_size=img_size, clip=clip, fix_numeric_type=fix_numeric_type)
         if not isinstance(pixels, (list, tuple)):

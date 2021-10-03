@@ -79,7 +79,7 @@ def pick_col(s: str) -> Col:
 
 
 class DivergingPalette:
-    def __init__(self, labels=Iterable[str]):
+    def __init__(self, labels: Iterable[str] = None):
         # ColorBrewer Diverging 12-class Paired
         self._cols = (
             (166, 206, 227),
@@ -97,13 +97,15 @@ class DivergingPalette:
         )
         # Create the lookup (with our own Col objects so they can be mutated)
         self._col_map = {}
-        for idx, label in enumerate(labels):
-            self._col_map[label] = Col(*self._cols[idx % len(self._cols)])
+        if labels is not None:
+            for idx, label in enumerate(labels):
+                self._col_map[label] = Col(*self._cols[idx % len(self._cols)])
 
     def col(self, label: str) -> Col:
-        if label in self._col_map:
-            return self._col_map[label]
-        return NamedCols.black
+        if label not in self._col_map:
+            idx = len(self._col_map) % len(self._cols)
+            self._col_map[label] = Col(*self._cols[idx])
+        return self._col_map[label]
 
 
 class NamedCols:

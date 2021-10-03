@@ -224,21 +224,11 @@ class Img:
         raise NotImplementedError()
 
     @classmethod
-    def from_bgr(
-        cls,
-        array: np.ndarray,
-        metadata: Optional[Dict] = None,
-        make_arrays_contiguous: bool = True,
-    ):
+    def from_bgr(cls, array: np.ndarray, metadata: Optional[Dict] = None, make_arrays_contiguous: bool = True):
         return cls(source=array, itype=ImgType.BGR, metadata=metadata, make_arrays_contiguous=make_arrays_contiguous)
 
     @classmethod
-    def from_rgb(
-        cls,
-        array: np.ndarray,
-        metadata: Optional[Dict] = None,
-        make_arrays_contiguous: bool = True,
-    ):
+    def from_rgb(cls, array: np.ndarray, metadata: Optional[Dict] = None, make_arrays_contiguous: bool = True):
         return cls(source=array, itype=ImgType.RGB, metadata=metadata, make_arrays_contiguous=make_arrays_contiguous)
 
     @classmethod

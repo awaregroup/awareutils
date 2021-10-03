@@ -134,3 +134,9 @@ def test_rectangle_iou_no_intersection():
 def test_polygon():
     # Some polygon tests ...
     raise NotImplementedError()
+
+
+@xfail
+def test_fill():
+    # Check fill fails correctly with different image sizes
+    raise NotImplementedError()
