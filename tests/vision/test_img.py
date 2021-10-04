@@ -1,11 +1,10 @@
 import os
 import tempfile
 import time
-from json import load
 
 import numpy as np
 import pytest
-from awareutils.vision.img import Img, ImgType
+from awareutils.vision.img import Img, ImgSize, ImgType
 from PIL import Image as PILImage
 
 xfail = pytest.mark.xfail
@@ -28,6 +27,12 @@ class TempFilePath(object):
         if os.path.exists(self.path):
             os.remove(self.path)
         time.sleep(0.1)
+
+
+def test_isize_constructor():
+    ImgSize(w=100, h=100)
+    with pytest.raises(Exception):
+        ImgSize(100, 100)
 
 
 def test_rgb_constructor():
@@ -92,4 +97,9 @@ def test_img_resize():
 @xfail
 def test_img_crop():
     # Check resizes, preserves metadata etc.
+    raise NotImplementedError()
+
+
+@xfail
+def test_img_new():
     raise NotImplementedError()

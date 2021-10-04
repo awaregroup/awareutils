@@ -1,5 +1,5 @@
 import hashlib
-from typing import Any, Iterable
+from typing import Any, Iterable, Tuple
 
 from loguru import logger
 
@@ -40,6 +40,14 @@ class Col:
     @b.setter
     def b(self, b: int) -> None:
         self._b = self._validate_uint8(b)
+
+    @property
+    def rgb(self) -> Tuple[int, int, int]:
+        return (self.r, self.g, self.b)
+
+    @property
+    def bgr(self) -> Tuple[int, int, int]:
+        return (self.b, self.g, self.r)
 
     def _validate_uint8(self, c: int) -> int:
         if c is None:
@@ -113,6 +121,7 @@ class NamedCols:
     antique_white = Col(250, 235, 215)
     aqua = Col(0, 255, 255)
     aqua_marine = Col(127, 255, 212)
+    aware_blue = Col(87, 200, 231)
     azure = Col(240, 255, 255)
     beige = Col(245, 245, 220)
     bisque = Col(255, 228, 196)

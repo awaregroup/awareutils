@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from awareutils.vision.img_size import ImgSize
+from awareutils.vision.img import ImgSize
 from awareutils.vision.shape import Pixel, Polygon, Rectangle
 
 IMG_SIZE = ImgSize(h=100, w=100)

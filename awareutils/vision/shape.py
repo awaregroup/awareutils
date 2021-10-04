@@ -2,33 +2,8 @@ from abc import ABCMeta, abstractmethod, abstractproperty
 from typing import List, Optional
 
 import numpy as np
-from awareutils.vision.img import Img
-from awareutils.vision.img_size import ImgSize
+from awareutils.vision.img import ImgSize
 from loguru import logger
-
-
-def img_operation(f):
-    """
-    Wrapper to pass when the first argument is the img, and the rest are whatever. I.e. signature should be 
-        f(self, img: Img, *, ...)
-    Basically just checks the img.size attribute matches our size.
-    """
-
-    def wrapper(*args, **kwargs):
-        self = args[0]
-        img = args[1]
-        if not isinstance(img, Img):
-            raise ValueError("'img' must be an Img")
-        if img.size != self._img_size:
-            raise RuntimeError(
-                (
-                    "This img has a different size to the img this shape was defined with i.e. the coordinate systems"
-                    " don't match. Consider using shape.project() first."
-                )
-            )
-        return f(*args, **kwargs)
-
-    return wrapper
 
 
 class Shape(metaclass=ABCMeta):
@@ -106,16 +81,6 @@ class Shape(metaclass=ABCMeta):
 
     def _validate_y(self, y: int) -> int:
         return self._validate_coordinate(d=y, maximum=self._img_size.h - 1)
-
-    # @img_operation
-    # @abstractmethod
-    # def fill(self, img: Img, *, color) -> None:
-    #     pass
-
-    # @img_operation
-    # @abstractmethod
-    # def outline(self, img: Img) -> None:
-    #     pass
 
 
 class Pixel(Shape):
@@ -302,11 +267,15 @@ class Polygon(Shape):
             raise RuntimeError("must be at least one pixel to define a polygon!")
         if not all(isinstance(p, Pixel) for p in pixels):
             raise ValueError("All points in pixels must be Pixels")
-        self._pixels = pixels
+        self._pixels = list(pixels)
 
     @property
     def pixels(self) -> List[Pixel]:
         return self._pixels
+
+    @property
+    def pixels_closed(self) -> List[Pixel]:
+        return self._pixels if len(self._pixels) <= 1 else self._pixels + [self._pixels[-1]]
 
     def __repr__(self):
         return f"Polygon: points={self._pixels}"

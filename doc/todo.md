@@ -1,9 +1,6 @@
 # TODO
 
-- Fix import issues
-- consider a `draw` modules which is `draw(shape, img)`.
-- Now:
-  - Add OpenCV dependency
+- get rid of loguru maybe? or have a named one it can be turned off.
 - Admin:
   - flake8 config and generally nicer build stuff.
   - build pipeline in github.
@@ -12,13 +9,9 @@
   - Memoise calls like shape.center or shape.mask so if it's called a second time it's cached.
 - Features:
   - Drawing:
-    - Custom color classes? Again, BGR vs RGB. Maybe just use palletable so we get nice color palettes too.
     - Add shape drawing methods
-      - `fill` and `border`
+      - circle. line. arrow? maybe a few other shapes.
       - nicer text! add some cool fonts?
-      - allow passing above color classes, or e.g. a single `255` means all pixels `255` etc.
-      - Check contiguous if using OpenCV drawing to ensure arrays are drawn on inplace
-  - Question: Pass through PIL/ndarray functionality to underlying image? E.g. allow `Img` to be indexed if source is array? Leaning towards 'no' as e.g. in this case user can just do `Img.bgr()` and then know it's an array (and this will also work if for some reason they change to using PIL `Img` instead).
   - OpenCV:
     - Automatically search USB devices if you don't know which number (as it's a bit weird) ...
     - Automatically search supported fourcc in videowriter (or does -1 do that?). At least find some good fourcc defaults.
@@ -28,3 +21,4 @@
     - `shape.mask` method
   - Add v4l2 loopback videowriter
   - Using a 2d mask on a 3d image. Or maybe just have a `shape.mask3d()` method.
+- Figure out nicer solution for circular imports

@@ -7,8 +7,6 @@ import cv2
 import numpy as np
 import piexif
 import PIL.Image as PILImageModule
-from awareutils.vision.img_size import ImgSize
-from awareutils.vision.shape import Pixel, Polygon, Rectangle
 from loguru import logger
 
 
@@ -17,6 +15,27 @@ class ImgType(Enum):
     BGR = auto()
     RGB = auto()
     PIL = auto()
+
+
+class ImgSize:
+    def __init__(self, *, h: int, w: int):
+        self._validate_img_shape(w=w, h=h)
+        self.w = w
+        self.h = h
+
+    def __eq__(self, other):
+        return self.w == other.w and self.h == other.h
+
+    @staticmethod
+    def _validate_img_shape(*, w: int, h: int):
+        if not isinstance(w, int) or not isinstance(h, int):
+            raise ValueError("w and h should be ints")
+        if w <= 1 or h <= 1:
+            raise ValueError("img should be at least 1x1")
+
+
+# Uggh, circular imports
+from awareutils.vision.shape import Rectangle
 
 
 class Img:
@@ -54,6 +73,8 @@ class Img:
 
         else:
             raise RuntimeError("Unknown source type")
+
+        self._draw = None
 
         # Set some attributes for performance:
         self.size = self._get_size()
@@ -201,28 +222,6 @@ class Img:
                 source = source.copy()
             return Img(source=source, itype=self.itype, metadata=self.metadata)
 
-    def draw_pixel(self, pixel: Pixel):
-        # As a single point, or a circle.
-        raise NotImplementedError()
-
-    def draw_rectangle(self, rectangle: Rectangle):
-        raise NotImplementedError()
-
-    def draw_polygon(self, polygon: Polygon):
-        raise NotImplementedError()
-
-    #     if self.itype == ImgType.PIL:
-    #         draw = ImageDraw.Draw(self.pil)
-    #         if col is None:
-    #             col = (0, 0, 0)
-    #         draw.polygon(poly, fill=col, outline=col)
-    #     elif self.type in (ImgType.RGB, ImgType.BGR):
-    #         c = col if self.type == ImgType.BGR else [col[2], col[1], col[0]]
-    #         cv2.fillPoly(self.source, pts=[np.array(poly)], color=c)
-
-    def draw_text(self):
-        raise NotImplementedError()
-
     @classmethod
     def from_bgr(cls, array: np.ndarray, metadata: Optional[Dict] = None, make_arrays_contiguous: bool = True):
         return cls(source=array, itype=ImgType.BGR, metadata=metadata, make_arrays_contiguous=make_arrays_contiguous)
@@ -234,3 +233,40 @@ class Img:
     @classmethod
     def from_pil(cls, pil: PILImageModule.Image, metadata: Optional[Dict] = None):
         return cls(source=pil, itype=ImgType.PIL, metadata=metadata)
+
+    @classmethod
+    def new(cls, size: ImgSize, itype: ImgType) -> "Img":
+        if itype == ImgType.PIL:
+            return Img(source=PILImageModule.new("RGB", size=(size.w, size.h), color=(0, 0, 0)), itype=itype)
+        elif itype in (ImgType.RGB, ImgType.BGR):
+            return Img(source=np.zeros((size.h, size.w, 3), np.uint8), itype=itype)
+
+    @classmethod
+    def new_pil(cls, size: ImgSize) -> "Img":
+        return cls.new(size=size, itype=ImgType.PIL)
+
+    @classmethod
+    def new_bgr(cls, size: ImgSize) -> "Img":
+        return cls.new(size=size, itype=ImgType.BGR)
+
+    @classmethod
+    def new_rgb(cls, size: ImgSize) -> "Img":
+        return cls.new(size=size, itype=ImgType.RGB)
+
+
+# Ewwww, getting around circular imports ...
+from awareutils.vision.draw import Drawer, OpenCVDrawer, PILDrawer
+
+
+@property
+def draw(self) -> Union[Drawer]:
+    if self._draw is None:
+        if self.itype == ImgType.PIL:
+            # TODO: don't hardcode last arg
+            self._draw = PILDrawer(img=self, reproject_shapes_if_required=True)
+        elif self.itype in (ImgType.RGB, ImgType.BGR):
+            self._draw = OpenCVDrawer(img=self, reproject_shapes_if_required=True)
+    return self._draw
+
+
+Img.draw = draw
