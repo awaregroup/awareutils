@@ -1,4 +1,3 @@
-import warnings
 from abc import ABCMeta, abstractmethod
 
 import cv2
@@ -6,6 +5,7 @@ import numpy as np
 from awareutils.vision.col import Col
 from awareutils.vision.img import Img, ImgType
 from awareutils.vision.shape import Pixel, Polygon, Rectangle, Shape
+from loguru import logger
 from PIL import ImageDraw
 
 
@@ -38,7 +38,7 @@ class Drawer(metaclass=ABCMeta):
         # Re-project if needed
         if self.img.size != shape._img_size:
             if self._reproject_shapes_if_required:
-                warnings.warn("Img and shape size don't match, so reprojecting shape to img size before drawing.")
+                logger.warning("Img and shape size don't match, so reprojecting shape to img size before drawing.")
                 shape = shape.project(self.size)
             else:
                 raise RuntimeError(

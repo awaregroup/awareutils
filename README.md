@@ -48,3 +48,5 @@ Then you can edit at will, and ensure you run
 ```sh
 pytest .
 ```
+
+If you want to see some logs, ensure you do `logger.enable('awareutils')`.

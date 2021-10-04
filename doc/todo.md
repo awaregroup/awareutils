@@ -1,5 +1,6 @@
 # TODO
 
+- if users never want to use pillow, allow that. likewise piexif etc.
 - get rid of loguru maybe? or have a named one it can be turned off.
 - Admin:
   - flake8 config and generally nicer build stuff.
