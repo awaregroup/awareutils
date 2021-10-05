@@ -1,7 +1,7 @@
 # TODO
 
-- if users never want to use pillow, allow that. likewise piexif etc.
-- get rid of loguru maybe? or have a named one it can be turned off.
+- If users never want to use pillow, allow that. likewise piexif etc.
+- maybe ImgSize -> ISize, ImgType -> IType, etc. Shorter code, easier to write, etc.
 - Admin:
   - flake8 config and generally nicer build stuff.
   - build pipeline in github.

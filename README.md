@@ -6,6 +6,7 @@ A collection of Python utilities used within Aware Group. Generally computer vis
 - Improve development time by a) getting features for free (e.g. threaded cameras) and b) getting 'debug' features for free (like printing FPS) which will (hopefully) help when issues are encountered.
 - Improve quality (performance etc.).
 - Standardize code across various projects.
+- Being opinionated and explicit. This helps deliver the above objectives, and speed up learning.
 
 ## Features
 
