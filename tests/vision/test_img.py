@@ -5,6 +5,7 @@ import time
 import numpy as np
 import pytest
 from awareutils.vision.img import Img, ImgSize, ImgType
+from awareutils.vision.shape import Rectangle
 from PIL import Image as PILImage
 
 xfail = pytest.mark.xfail
@@ -83,23 +84,57 @@ def test_save_load_metadata(fmt, itype_save, itype_open, load_metadata):
         img = Img.open(fpath, itype=itype_open, load_metadata=load_metadata)
         assert img.itype == itype_open
         if load_metadata:
-            assert img.metadata == metadata
+            assert img._metadata == metadata
         else:
-            assert img.metadata is None
+            assert img._metadata is None
 
 
-@xfail
-def test_img_resize():
+@pytest.mark.parametrize("itype", [ImgType.BGR, ImgType.RGB, ImgType.PIL])
+@pytest.mark.parametrize("meta", [True, False])
+def test_img_resize(itype: ImgType, meta: bool):
     # Check resizes, preserves metadata etc.
-    raise NotImplementedError()
+    s0 = ImgSize(h=100, w=100)
+    s1 = ImgSize(h=10, w=10)
+    img = Img.new(size=s0, itype=itype)
+    if meta:
+        img.metadata = {"a": 1}
+    resized = img.resize(s1)
+    assert resized.h == s1.h
+    assert resized.w == s1.w
+    if meta:
+        assert resized.metadata == {"a": 1}
 
 
-@xfail
-def test_img_crop():
-    # Check resizes, preserves metadata etc.
-    raise NotImplementedError()
+@pytest.mark.parametrize("itype", [ImgType.BGR, ImgType.RGB, ImgType.PIL])
+@pytest.mark.parametrize("meta", [True, False])
+@pytest.mark.parametrize("copy", [True, False])
+@pytest.mark.parametrize("wrong_crop_size", [True, False])
+def test_img_crop(itype: ImgType, meta: bool, copy: bool, wrong_crop_size: bool):
+    size = ImgSize(h=100, w=100)
+    img = Img.new(size=size, itype=itype)
+    if meta:
+        img.metadata = {"a": 1}
+    rect = Rectangle(x0=10, y0=10, x1=19, y1=19, img_size=ImgSize(h=99, w=99) if wrong_crop_size else size)
+    if itype == ImgType.PIL and not copy:
+        # Can never ask not to copy for PIL
+        with pytest.raises(Exception):
+            cropped = img.crop(rect, copy=copy)
+    else:
+        if wrong_crop_size:
+            with pytest.raises(Exception):
+                cropped = img.crop(rect, copy=copy)
+        else:
+            cropped = img.crop(rect, copy=copy)
+            assert cropped.h == 10 and cropped.w == 10
+            if meta:
+                assert cropped.metadata == {"a": 1}
 
 
-@xfail
-def test_img_new():
-    raise NotImplementedError()
+@pytest.mark.parametrize("itype", [ImgType.BGR, ImgType.RGB, ImgType.PIL])
+@pytest.mark.parametrize("meta", [True, False])
+def test_img_new(itype: ImgType, meta: bool):
+    if meta:
+        img = Img.new(size=ImgSize(h=10, w=10), itype=itype)
+    else:
+        img = Img.new(size=ImgSize(h=10, w=10), itype=itype, metadata={"a": 1})
+    assert img is not None

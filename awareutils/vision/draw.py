@@ -43,7 +43,7 @@ class Drawer(metaclass=ABCMeta):
             else:
                 raise RuntimeError(
                     (
-                        "This img has a different size to the img thes shape was defined with i.e. the coordinate"
+                        "This img has a different size to the img the shape was defined with i.e. the coordinate"
                         " systems don't match. Consider using shape.project() first."
                     )
                 )

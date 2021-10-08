@@ -1,6 +1,7 @@
 # TODO
 
-- If users never want to use pillow, allow that. likewise piexif etc.
+- Add a pi camera class
+- If users never want to use pillow, allow that. likewise piexif, picamera, etc.
 - maybe ImgSize -> ISize, ImgType -> IType, etc. Shorter code, easier to write, etc.
 - Admin:
   - flake8 config and generally nicer build stuff.

@@ -56,7 +56,7 @@ class Img:
     ):
         self.source = source
         self.itype = itype
-        self.metadata = metadata
+        self._metadata = metadata
         self.make_arrays_contiguous = make_arrays_contiguous
 
         if self.itype == ImgType.PIL:
@@ -87,6 +87,16 @@ class Img:
         elif self.itype in (ImgType.BGR, ImgType.RGB):
             h, w = self.source.shape[:2]
         return ImgSize(w=w, h=h)
+
+    @property
+    def metadata(self) -> Optional[Dict]:
+        return self._metadata
+
+    @metadata.setter
+    def metadata(self, value: Dict) -> None:
+        if not isinstance(value, Dict):
+            raise ValueError("value must be a dict")
+        self._metadata = value
 
     def rgb(self) -> np.ndarray:
         if self.itype == ImgType.PIL:
@@ -173,7 +183,7 @@ class Img:
         if not isinstance(path, (Path, str)):
             raise ValueError("path must be a Path or str")
         path = str(path)
-        should_save_metadata = save_metadata and self.metadata is not None
+        should_save_metadata = save_metadata and self._metadata is not None
         # If we're saving metadata, it's got to be PIL:
         if self.itype == ImgType.PIL or should_save_metadata:
             pil = self.pil()
@@ -182,7 +192,7 @@ class Img:
                     raise RuntimeError(
                         "We're saving metadata in EXIF already, so it's unsupported for you to use it too!"
                     )
-                exif_dict = {"Exif": {piexif.ExifIFD.UserComment: json.dumps(self.metadata).encode("utf8")}}
+                exif_dict = {"Exif": {piexif.ExifIFD.UserComment: json.dumps(self._metadata).encode("utf8")}}
                 kwargs["exif"] = piexif.dump(exif_dict)
 
             # Default to optimize=True. This means we'll get failures for any save methods that don't supported
@@ -196,31 +206,38 @@ class Img:
         elif self.itype == ImgType.BGR:
             cv2.imwrite(path, self.source)
 
-    def resize(self, *, width, height) -> "Img":
+    def resize(self, isize: ImgSize) -> "Img":
         """
         Resize the image
         """
         # TODO: support different sampling
         # TODO: test
         if self.itype == ImgType.PIL:
-            return Img(source=self.source.resize(size=(width, height)), itype=self.itype, metadata=self.metadata)
+            return Img(source=self.source.resize(size=(isize.w, isize.h)), itype=self.itype, metadata=self._metadata)
         elif self.itype in (ImgType.RGB, ImgType.BGR):
-            return Img(source=cv2.resize(self.source, (width, height)), itype=self.itype, metadata=self.metadata)
+            return Img(source=cv2.resize(self.source, (isize.w, isize.h)), itype=self.itype, metadata=self._metadata)
 
     def crop(self, rectangle: Rectangle, copy: bool = False) -> "Img":
+        if rectangle._img_size != self.size:
+            raise RuntimeError(
+                (
+                    "This crop rectangle has a different size to the img i.e. the coordinate systems don't match. "
+                    "Consider using rectangle.project() first."
+                )
+            )
         if self.itype == ImgType.PIL:
             if not copy:
                 raise RuntimeError("PIL crops are always copys. I think?")
             return Img(
                 source=self.source.crop((rectangle.x0, rectangle.y0, rectangle.x1 + 1, rectangle.y1 + 1)),
                 itype=self.itype,
-                metadata=self.metadata,
+                metadata=self._metadata,
             )
         elif self.itype in (ImgType.RGB, ImgType.BGR):
             source = rectangle.slice_array(self.source)
             if copy:
                 source = source.copy()
-            return Img(source=source, itype=self.itype, metadata=self.metadata)
+            return Img(source=source, itype=self.itype, metadata=self._metadata)
 
     @classmethod
     def from_bgr(cls, array: np.ndarray, metadata: Optional[Dict] = None, make_arrays_contiguous: bool = True):
@@ -235,23 +252,42 @@ class Img:
         return cls(source=pil, itype=ImgType.PIL, metadata=metadata)
 
     @classmethod
-    def new(cls, size: ImgSize, itype: ImgType) -> "Img":
+    def new(
+        cls,
+        size: ImgSize,
+        itype: ImgType,
+        metadata: Optional[Dict] = None,
+    ) -> "Img":
         if itype == ImgType.PIL:
-            return Img(source=PILImageModule.new("RGB", size=(size.w, size.h), color=(0, 0, 0)), itype=itype)
+            return Img(
+                source=PILImageModule.new("RGB", size=(size.w, size.h), color=(0, 0, 0)), itype=itype, metadata=metadata
+            )
         elif itype in (ImgType.RGB, ImgType.BGR):
-            return Img(source=np.zeros((size.h, size.w, 3), np.uint8), itype=itype)
+            return Img(source=np.zeros((size.h, size.w, 3), np.uint8), itype=itype, metadata=metadata)
 
     @classmethod
-    def new_pil(cls, size: ImgSize) -> "Img":
-        return cls.new(size=size, itype=ImgType.PIL)
+    def new_pil(
+        cls,
+        size: ImgSize,
+        metadata: Optional[Dict] = None,
+    ) -> "Img":
+        return cls.new(size=size, itype=ImgType.PIL, metadata=metadata)
 
     @classmethod
-    def new_bgr(cls, size: ImgSize) -> "Img":
-        return cls.new(size=size, itype=ImgType.BGR)
+    def new_bgr(
+        cls,
+        size: ImgSize,
+        metadata: Optional[Dict] = None,
+    ) -> "Img":
+        return cls.new(size=size, itype=ImgType.BGR, metadata=metadata)
 
     @classmethod
-    def new_rgb(cls, size: ImgSize) -> "Img":
-        return cls.new(size=size, itype=ImgType.RGB)
+    def new_rgb(
+        cls,
+        size: ImgSize,
+        metadata: Optional[Dict] = None,
+    ) -> "Img":
+        return cls.new(size=size, itype=ImgType.RGB, metadata=metadata)
 
 
 # Ewwww, getting around circular imports ...
