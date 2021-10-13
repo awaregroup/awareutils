@@ -64,29 +64,26 @@ def test_from_rgb():
 @pytest.mark.parametrize("fmt", ["JPEG", "PNG"])
 @pytest.mark.parametrize("itype_save", [ImgType.BGR, ImgType.RGB, ImgType.PIL])
 @pytest.mark.parametrize("itype_open", [ImgType.BGR, ImgType.RGB, ImgType.PIL])
-@pytest.mark.parametrize("load_metadata", [True, False])
-def test_save_load_metadata(fmt, itype_save, itype_open, load_metadata):
+@pytest.mark.parametrize("do_metadata", [True, False])
+def test_save_load_metadata(fmt, itype_save, itype_open, do_metadata):
 
-    metadata = [1, 2, 3]
+    metadata = [1, 2, 3] if do_metadata else None
     if itype_save == ImgType.BGR:
         img = Img.from_bgr(EMPTY_ARRAY, metadata=metadata)
     elif itype_save == ImgType.RGB:
         img = Img.from_rgb(EMPTY_ARRAY, metadata=metadata)
     elif itype_save == ImgType.PIL:
         img = Img.from_pil(EMPTY_PIL, metadata=metadata)
-    # fpath = os.path.join(tempfile.gettempdir(), os.urandom(24).hex())
-    # with TempFilePath(suffix="." + fmt) as f:
-    # with tempfile.TemporaryDirectory() as dirname:
     with tempfile.NamedTemporaryFile() as f:
         f.close()  # 'cos it opens it opened
-        fpath = f.name
-        img.save(fpath, format=fmt)
-        img = Img.open(fpath, itype=itype_open, load_metadata=load_metadata)
+        fpath = f"{f.name}.{fmt.lower()}"
+        img.save(fpath, format=fmt, save_metadata=do_metadata)
+        img = Img.open(fpath, itype=itype_open, load_metadata=do_metadata)
         assert img.itype == itype_open
-        if load_metadata:
-            assert img._metadata == metadata
+        if do_metadata:
+            assert img.metadata == metadata
         else:
-            assert img._metadata is None
+            assert img.metadata is None
 
 
 @pytest.mark.parametrize("itype", [ImgType.BGR, ImgType.RGB, ImgType.PIL])

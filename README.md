@@ -8,10 +8,19 @@ A collection of Python utilities used within Aware Group. Generally computer vis
 - Standardize code across various projects.
 - Being opinionated and explicit. This helps deliver the above objectives, and speed up learning.
 
+## Installation
+
+```sh
+git clone https://github.com/awaregroup/awareutils
+pip install awareutils[all]
+```
+
+The above installs everything including e.g. `OpenCV` and `Pillow`. If you know you're only going to work with `OpenCV` then this library supports that - in this case you'd `pip install awareutils[cv2]`. See `extras-requirements.txt` for a breakdown.
+
 ## Features
 
 - Single `Img` class. The key features are:
-  - Clarity between BGR / RGB / PIL, and no performance cost for using a particular one.
+  - Clarity between BGR / RGB / PIL, and no performance cost for using a particular one. If you only ever want `PIL` you don't need to install `OpenCV`.
   - Ability to save metadata (e.g. annotations) in the image itself (via EXIF metadata).
 - Various video classes which:
   - Are threaded for optimal performance (i.e. your main loop isn't hanging on decoding).

@@ -1,8 +1,9 @@
 # TODO
 
+- CI/CD github
 - Add a pi camera class
 - If users never want to use pillow, allow that. likewise piexif, picamera, etc.
-- maybe ImgSize -> ISize, ImgType -> IType, etc. Shorter code, easier to write, etc.
+- maybe ImgSize -> ISize, ImgType -> IType, etc. Shorter code, easier to write, etc. Also - rect instead of rectangle.
 - Admin:
   - flake8 config and generally nicer build stuff.
   - build pipeline in github.

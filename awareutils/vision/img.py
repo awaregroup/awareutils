@@ -1,13 +1,23 @@
 import json
 from enum import Enum, auto, unique
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import TYPE_CHECKING, Dict, Optional, Union
 
-import cv2
 import numpy as np
-import piexif
-import PIL.Image as PILImageModule
 from loguru import logger
+
+try:
+    import cv2
+except ImportError:
+    from awareutils.vision.mock import cv2
+try:
+    import PIL.Image as PILImageModule
+except ImportError:
+    from awareutils.vision.mock import PILImageModule
+try:
+    import piexif
+except ImportError:
+    from awareutils.vision.mock import piexif
 
 
 @unique
@@ -34,7 +44,9 @@ class ImgSize:
             raise ValueError("img should be at least 1x1")
 
 
-# Uggh, circular imports
+# Uggh, circular imports. Other things e.g. shape want ImgSize, so let's give them that first above. Note that we could
+# define ImgSize in a different file which would also resolve the circular imports, but I reckon it's pretty tied to
+# Img, so let's leave it here and accept this slight hack.
 from awareutils.vision.shape import Rectangle
 
 
@@ -49,7 +61,7 @@ class Img:
 
     def __init__(
         self,
-        source: Union[np.ndarray, PILImageModule.Image],
+        source: Union[np.ndarray, "PILImageModule.Image"],
         itype: ImgType,
         metadata: Optional[Dict] = None,
         make_arrays_contiguous: bool = True,
@@ -124,13 +136,13 @@ class Img:
             return np.ascontiguousarray(arr)
         return arr
 
-    def pil(self) -> PILImageModule.Image:
+    def pil(self) -> "PILImageModule.Image":
         if self.itype == ImgType.PIL:
             return self.source
         elif self.itype == ImgType.RGB:
             return PILImageModule.fromarray(np.ascontiguousarray(self.source))
         elif self.itype == ImgType.BGR:
-            return PILImageModule.fromarray(cv2.cvtColor(np.ascontiguousarray(self.source), cv2.COLOR_BGR2RGB))
+            return PILImageModule.fromarray(np.ascontiguousarray(self.bgr()))
 
     @classmethod
     def open(cls, path: Union[Path, str], itype: ImgType, load_metadata: bool = False) -> "Img":
