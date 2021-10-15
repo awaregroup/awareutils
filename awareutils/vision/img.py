@@ -1,11 +1,12 @@
 import json
 from enum import Enum, auto, unique
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Optional, Union
+from typing import Dict, Optional, Union
 
 import numpy as np
 from loguru import logger
 
+# Import only what we need
 try:
     import cv2
 except ImportError:

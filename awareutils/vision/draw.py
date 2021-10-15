@@ -1,12 +1,20 @@
 from abc import ABCMeta, abstractmethod
 
-import cv2
 import numpy as np
 from awareutils.vision.col import Col
 from awareutils.vision.img import Img, ImgType
 from awareutils.vision.shape import Pixel, Polygon, Rectangle, Shape
 from loguru import logger
-from PIL import ImageDraw
+
+# Import only what we need
+try:
+    import cv2
+except ImportError:
+    from awareutils.vision.mock import cv2
+try:
+    from PIL import ImageDraw as PILImageDraw
+except ImportError:
+    from awareutils.vision.mock import PILImageDraw
 
 
 def _none_or_rgb(col: Col):
@@ -71,7 +79,7 @@ class PILDrawer(Drawer):
         super().__init__(img=img, reproject_shapes_if_required=reproject_shapes_if_required)
         if img.itype != ImgType.PIL:
             raise RuntimeError("img must be a PIL Img")
-        self._imgdraw = ImageDraw.Draw(img.source)
+        self._imgdraw = PILImageDraw.Draw(img.source)
 
     def draw_pixel(self, pixel: Pixel, fill: Col = None, outline: Col = None, width: int = 1) -> None:
         pixel = self._check_args(shape=pixel, outline=outline, fill=fill, width=width)
@@ -90,7 +98,7 @@ class PILDrawer(Drawer):
 
     def draw_polygon(self, polygon: Polygon, fill: Col = None, outline: Col = None, width: int = 1) -> None:
         polygon = self._check_args(shape=polygon, outline=outline, fill=fill, width=width)
-        # ImageDraw.polygon doesn't support width, but line does. So use polygon unless we need an outline of width != 1
+        # PILImageDraw.polygon doesn't support width, but line does. So use polygon unless we need an outline of width != 1
         points = [(p.x, p.y) for p in polygon.pixels]
         self._imgdraw.polygon(points, fill=_none_or_rgb(fill.rgb), outline=_none_or_rgb(outline.rgb))
         # OK, the cases where we need custom width ...

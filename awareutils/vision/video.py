@@ -7,9 +7,14 @@ from pathlib import Path
 from queue import Queue
 from typing import Iterator, Union
 
-import cv2
 from awareutils.vision.img import Img
 from loguru import logger
+
+# Import only what we need
+try:
+    import cv2
+except ImportError:
+    from awareutils.vision.mock import cv2
 
 
 @dataclass

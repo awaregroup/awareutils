@@ -14,4 +14,5 @@ class Mock:
 
 cv2 = Mock("cv2")
 PILImageModule = Mock("PIL")
+PILImageDraw = Mock("PIL")
 piexif = Mock("piexif")

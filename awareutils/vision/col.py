@@ -1,9 +1,7 @@
 import hashlib
-from typing import Any, Iterable, Tuple
+from typing import Iterable, Tuple
 
 from loguru import logger
-
-# TODO: nice palettes
 
 
 class Col:
@@ -262,4 +260,3 @@ class NamedCols:
     white_smoke = Col(245, 245, 245)
     yellow = Col(255, 255, 0)
     yellow_green = Col(154, 205, 50)
-
