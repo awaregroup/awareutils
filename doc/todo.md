@@ -1,5 +1,6 @@
 # TODO
 
+- push to pypi
 - Add a pi camera class
 - maybe ImgSize -> ISize, ImgType -> IType, etc. Shorter code, easier to write, etc. Also - rect instead of rectangle.
 - Admin:

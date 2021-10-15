@@ -148,7 +148,7 @@ class OpenCVDrawer(Drawer):
             cv2.fillPoly(self.img.source, pts=pts, color=self._col(fill))
         # Only outline if we need to:
         if outline is not None and (fill is None or outline != fill or width > 1):
-            cv2.polylines(self.img.source, pts=pts, closed=True, color=self._col(outline), thickness=width)
+            cv2.polylines(self.img.source, pts=pts, isClosed=True, color=self._col(outline), thickness=width)
 
     def _col(self, col: Col):
         if col is None:
