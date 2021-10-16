@@ -10,7 +10,7 @@ xfail = pytest.mark.xfail
 
 def test_draw_pixel_pil():
     img = Img.new_pil(isize)
-    pixel = Pixel(x=10, y=10, img_size=isize)
+    pixel = Pixel(x=10, y=10, isize=isize)
     img.draw.draw(pixel, fill=Col(1, 1, 1))
     assert img.bgr().sum() == 3
 
@@ -18,7 +18,7 @@ def test_draw_pixel_pil():
 def test_rgb_vs_bgr():
     for itype in (ImgType.PIL, ImgType.BGR, ImgType.RGB):
         img = Img.new(isize, itype)
-        pixel = Pixel(x=10, y=10, img_size=isize)
+        pixel = Pixel(x=10, y=10, isize=isize)
         img.draw.draw(pixel, fill=Col(1, 2, 3))
         assert img.rgb()[10, 10, 0] == 1
         assert img.rgb()[10, 10, 1] == 2
@@ -31,30 +31,6 @@ def test_draw_pixel_rgb():
 
 
 @xfail
-def test_draw_rectangle_pil_fill():
-    raise NotImplementedError()
-
-
-@xfail
-def test_draw_rectangle_pil_outline():
-    raise NotImplementedError()
-
-
-@xfail
-def test_draw_rectangle_pil_fill_and_outline():
-    raise NotImplementedError()
-
-
-@xfail
-def test_draw_polygon_pil_fill():
-    raise NotImplementedError()
-
-
-@xfail
-def test_draw_polygon_pil_outline():
-    raise NotImplementedError()
-
-
-@xfail
-def test_draw_polygon_pil_fill_and_outline():
+def test_all_the_shapes():
+    # fill, outline, etc.
     raise NotImplementedError()

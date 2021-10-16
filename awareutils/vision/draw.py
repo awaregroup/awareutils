@@ -3,7 +3,7 @@ from abc import ABCMeta, abstractmethod
 import numpy as np
 from awareutils.vision.col import Col
 from awareutils.vision.img import Img, ImgType
-from awareutils.vision.shape import Pixel, Polygon, Rectangle, Shape
+from awareutils.vision.shape import Circle, Line, Pixel, Polygon, PolyLine, Rectangle, Shape
 from loguru import logger
 
 # Import only what we need
@@ -44,7 +44,7 @@ class Drawer(metaclass=ABCMeta):
             raise ValueError("width should be an int")
 
         # Re-project if needed
-        if self.img.size != shape._img_size:
+        if self.img.isize != shape._isize:
             if self._reproject_shapes_if_required:
                 logger.warning("Img and shape size don't match, so reprojecting shape to img size before drawing.")
                 shape = shape.project(self.size)
@@ -66,7 +66,19 @@ class Drawer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def draw_polyline(self, line: Line, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+        pass
+
+    @abstractmethod
+    def draw_line(self, line: Line, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+        pass
+
+    @abstractmethod
     def draw_polygon(self, polygon: Polygon, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+        pass
+
+    @abstractmethod
+    def draw_circle(self, circle: Circle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
         pass
 
     def draw(self, shape: Shape, fill: Col = None, outline: Col = None, width: int = 1) -> None:
@@ -96,15 +108,37 @@ class PILDrawer(Drawer):
             width=width,
         )
 
+    def draw_polyline(self, polyline: PolyLine, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+        if fill is not None:
+            raise ValueError("PolyLines have no fill - please provide the `outline` argument for colour")
+        polyline = self._check_args(shape=polyline, outline=outline, fill=fill, width=width)
+        assert outline is not None
+        pixels = [(p.x, p.y) for p in polyline.pixels]
+        self._imgdraw.line(xy=pixels, fill=_none_or_rgb(outline), width=width, joint="curve")
+
+    def draw_line(self, line: Line, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+        return self.draw_polyline(polyline=line, fill=fill, outline=outline, width=width)
+
     def draw_polygon(self, polygon: Polygon, fill: Col = None, outline: Col = None, width: int = 1) -> None:
         polygon = self._check_args(shape=polygon, outline=outline, fill=fill, width=width)
-        # PILImageDraw.polygon doesn't support width, but line does. So use polygon unless we need an outline of width != 1
-        points = [(p.x, p.y) for p in polygon.pixels]
-        self._imgdraw.polygon(points, fill=_none_or_rgb(fill.rgb), outline=_none_or_rgb(outline.rgb))
+        # PILImageDraw.polygon doesn't support width, but line does. So use polygon unless we need an outline of
+        # width != 1
+        pixels = [(p.x, p.y) for p in polygon.pixels]
+        self._imgdraw.polygon(pixels, fill=_none_or_rgb(fill.rgb), outline=_none_or_rgb(outline.rgb))
         # OK, the cases where we need custom width ...
         if outline is not None and width != 1 and (fill is None or fill != outline):
-            points = [(p.x, p.y) for p in polygon.pixels_closed]
-            self._imgdraw.line(points, outline=outline.rgb, width=width)
+            pixels = [(p.x, p.y) for p in polygon.pixels_closed]
+            self._imgdraw.line(pixels, outline=outline.rgb, width=width)
+
+    def draw_circle(self, circle: Circle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+        circle = self._check_args(shape=circle, outline=outline, fill=fill, width=width)
+        cx, cy, r = circle.center.x, circle.center.y, circle.radius
+        self._imgdraw.ellipse(
+            xy=[(cx - r, cy - r), (cx + r, cy + r)],
+            fill=_none_or_rgb(fill.rgb),
+            outline=_none_or_rgb(outline.rgb),
+            width=width,
+        )
 
 
 class OpenCVDrawer(Drawer):
@@ -138,17 +172,38 @@ class OpenCVDrawer(Drawer):
         if outline is not None and (fill is None or outline != fill or width > 1):
             cv2.rectangle(self.img.source, p0, p1, color=self._col(outline), thickness=width)
 
-    def draw_polygon(self, polygon: Polygon, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def _draw_polyline(
+        self, polyline: PolyLine, closed: bool, fill: Col = None, outline: Col = None, width: int = 1
+    ) -> None:
         self._contiguity_test()
-        polygon = self._check_args(shape=polygon, outline=outline, fill=fill, width=width)
+        polyline = self._check_args(shape=polyline, outline=outline, fill=fill, width=width)
         # OK, OpenCV doesn't let us do fill and line separately, so let's do both.
-        pts = [np.array([(p.x, p.y) for p in polygon.pixels])]
+        pixels = [np.array([(p.x, p.y) for p in polyline.pixels])]
         # Always fill first:
         if fill is not None:
-            cv2.fillPoly(self.img.source, pts=pts, color=self._col(fill))
+            cv2.fillPoly(self.img.source, pts=pixels, color=self._col(fill))
         # Only outline if we need to:
         if outline is not None and (fill is None or outline != fill or width > 1):
-            cv2.polylines(self.img.source, pts=pts, isClosed=True, color=self._col(outline), thickness=width)
+            cv2.polylines(self.img.source, pts=pixels, isClosed=closed, color=self._col(outline), thickness=width)
+
+    def draw_polyline(self, polyline: PolyLine, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+        if fill is not None:
+            raise ValueError("PolyLines have no fill - please provide the `outline` argument for colour")
+        return self._draw_polyline(polyline=polyline, closed=False, fill=None, outline=outline, width=width)
+
+    def draw_line(self, *args, **kwargs) -> None:
+        return self.draw_polyline(*args, **kwargs)
+
+    def draw_polygon(self, polygon: Polygon, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+        return self._draw_polyline(polyline=polygon, closed=True, fill=fill, outline=outline, width=width)
+
+    def draw_circle(self, circle: Circle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+        # Always fill first:
+        if fill is not None:
+            cv2.circle(self.img.source, center=(circle.x, circle.y), color=self._col(fill), thickness=-1)
+        # Only outline if we need to:
+        if outline is not None and (fill is None or outline != fill or width > 1):
+            cv2.circle(self.img.source, center=(circle.x, circle.y), color=self._col(outline), thickness=width)
 
     def _col(self, col: Col):
         if col is None:

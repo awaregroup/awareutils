@@ -111,7 +111,7 @@ def test_img_crop(itype: ImgType, meta: bool, copy: bool, wrong_crop_size: bool)
     img = Img.new(size=size, itype=itype)
     if meta:
         img.metadata = {"a": 1}
-    rect = Rectangle(x0=10, y0=10, x1=19, y1=19, img_size=ImgSize(h=99, w=99) if wrong_crop_size else size)
+    rect = Rectangle(x0=10, y0=10, x1=19, y1=19, isize=ImgSize(h=99, w=99) if wrong_crop_size else size)
     if itype == ImgType.PIL and not copy:
         # Can never ask not to copy for PIL
         with pytest.raises(Exception):

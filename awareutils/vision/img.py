@@ -89,10 +89,10 @@ class Img:
 
         self._draw = None
 
-        # Set some attributes for performance:
-        self.size = self._get_size()
-        self.h = self.size.h
-        self.w = self.size.w
+        # Set some attributes for performance (as they are commonly accesses and often in loops etc.):
+        self.isize = self._get_size()
+        self.h = self.isize.h
+        self.w = self.isize.w
 
     def _get_size(self) -> ImgSize:
         if self.itype == ImgType.PIL:
@@ -231,7 +231,7 @@ class Img:
             return Img(source=cv2.resize(self.source, (isize.w, isize.h)), itype=self.itype, metadata=self._metadata)
 
     def crop(self, rectangle: Rectangle, copy: bool = False) -> "Img":
-        if rectangle._img_size != self.size:
+        if rectangle._isize != self.isize:
             raise RuntimeError(
                 (
                     "This crop rectangle has a different size to the img i.e. the coordinate systems don't match. "
