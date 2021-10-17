@@ -58,31 +58,31 @@ class Drawer(metaclass=ABCMeta):
         return shape
 
     @abstractmethod
-    def draw_pixel(self, pixel: Pixel, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def pixel(self, pixel: Pixel, fill: Col = None, outline: Col = None, width: int = 1) -> None:
         pass
 
     @abstractmethod
-    def draw_rectangle(self, rectangle: Rectangle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def rectangle(self, rectangle: Rectangle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
         pass
 
     @abstractmethod
-    def draw_polyline(self, line: Line, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def polyline(self, line: Line, fill: Col = None, outline: Col = None, width: int = 1) -> None:
         pass
 
     @abstractmethod
-    def draw_line(self, line: Line, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def line(self, line: Line, fill: Col = None, outline: Col = None, width: int = 1) -> None:
         pass
 
     @abstractmethod
-    def draw_polygon(self, polygon: Polygon, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def polygon(self, polygon: Polygon, fill: Col = None, outline: Col = None, width: int = 1) -> None:
         pass
 
     @abstractmethod
-    def draw_circle(self, circle: Circle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def circle(self, circle: Circle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
         pass
 
     def draw(self, shape: Shape, fill: Col = None, outline: Col = None, width: int = 1) -> None:
-        method = getattr(self, f"draw_{shape.__class__.__name__.lower()}")
+        method = getattr(self, shape.__class__.__name__.lower())
         return method(shape, fill=fill, outline=outline, width=width)
 
 
@@ -93,13 +93,13 @@ class PILDrawer(Drawer):
             raise RuntimeError("img must be a PIL Img")
         self._imgdraw = PILImageDraw.Draw(img.source)
 
-    def draw_pixel(self, pixel: Pixel, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def pixel(self, pixel: Pixel, fill: Col = None, outline: Col = None, width: int = 1) -> None:
         pixel = self._check_args(shape=pixel, outline=outline, fill=fill, width=width)
         if fill is None:
             raise ValueError("Please provide a `fill` to draw a Pixel")
         self._imgdraw.point(xy=(pixel.x, pixel.y), fill=fill.rgb)
 
-    def draw_rectangle(self, rectangle: Rectangle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def rectangle(self, rectangle: Rectangle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
         rectangle = self._check_args(shape=rectangle, outline=outline, fill=fill, width=width)
         self._imgdraw.rectangle(
             (rectangle.x0, rectangle.y0, rectangle.x1, rectangle.y1),
@@ -108,7 +108,7 @@ class PILDrawer(Drawer):
             width=width,
         )
 
-    def draw_polyline(self, polyline: PolyLine, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def polyline(self, polyline: PolyLine, fill: Col = None, outline: Col = None, width: int = 1) -> None:
         if fill is not None:
             raise ValueError("PolyLines have no fill - please provide the `outline` argument for colour")
         polyline = self._check_args(shape=polyline, outline=outline, fill=fill, width=width)
@@ -116,10 +116,10 @@ class PILDrawer(Drawer):
         pixels = [(p.x, p.y) for p in polyline.pixels]
         self._imgdraw.line(xy=pixels, fill=_none_or_rgb(outline), width=width, joint="curve")
 
-    def draw_line(self, line: Line, fill: Col = None, outline: Col = None, width: int = 1) -> None:
-        return self.draw_polyline(polyline=line, fill=fill, outline=outline, width=width)
+    def line(self, line: Line, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+        return self.polyline(polyline=line, fill=fill, outline=outline, width=width)
 
-    def draw_polygon(self, polygon: Polygon, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def polygon(self, polygon: Polygon, fill: Col = None, outline: Col = None, width: int = 1) -> None:
         polygon = self._check_args(shape=polygon, outline=outline, fill=fill, width=width)
         # PILImageDraw.polygon doesn't support width, but line does. So use polygon unless we need an outline of
         # width != 1
@@ -130,7 +130,7 @@ class PILDrawer(Drawer):
             pixels = [(p.x, p.y) for p in polygon.pixels_closed]
             self._imgdraw.line(pixels, outline=outline.rgb, width=width)
 
-    def draw_circle(self, circle: Circle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def circle(self, circle: Circle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
         circle = self._check_args(shape=circle, outline=outline, fill=fill, width=width)
         cx, cy, r = circle.center.x, circle.center.y, circle.radius
         self._imgdraw.ellipse(
@@ -152,14 +152,14 @@ class OpenCVDrawer(Drawer):
         if not self.img.source.flags.c_contiguous:
             raise RuntimeError("Source array isn't contiguous, which breaks OpenCV drawing. This shouldn't happen ...")
 
-    def draw_pixel(self, pixel: Pixel, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def pixel(self, pixel: Pixel, fill: Col = None, outline: Col = None, width: int = 1) -> None:
         self._contiguity_test()
         pixel = self._check_args(shape=pixel, outline=outline, fill=fill, width=width)
         if fill is None:
             raise ValueError("Please provide a `fill` to draw a Pixel")
         self.img.source[pixel.y, pixel.x, :] = self._col(fill)
 
-    def draw_rectangle(self, rectangle: Rectangle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def rectangle(self, rectangle: Rectangle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
         self._contiguity_test()
         rectangle = self._check_args(shape=rectangle, outline=outline, fill=fill, width=width)
         # OK, OpenCV doesn't let us do fill and line separately, so let's do both.
@@ -172,7 +172,7 @@ class OpenCVDrawer(Drawer):
         if outline is not None and (fill is None or outline != fill or width > 1):
             cv2.rectangle(self.img.source, p0, p1, color=self._col(outline), thickness=width)
 
-    def _draw_polyline(
+    def _polyline(
         self, polyline: PolyLine, closed: bool, fill: Col = None, outline: Col = None, width: int = 1
     ) -> None:
         self._contiguity_test()
@@ -186,18 +186,18 @@ class OpenCVDrawer(Drawer):
         if outline is not None and (fill is None or outline != fill or width > 1):
             cv2.polylines(self.img.source, pts=pixels, isClosed=closed, color=self._col(outline), thickness=width)
 
-    def draw_polyline(self, polyline: PolyLine, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def polyline(self, polyline: PolyLine, fill: Col = None, outline: Col = None, width: int = 1) -> None:
         if fill is not None:
             raise ValueError("PolyLines have no fill - please provide the `outline` argument for colour")
-        return self._draw_polyline(polyline=polyline, closed=False, fill=None, outline=outline, width=width)
+        return self._polyline(polyline=polyline, closed=False, fill=None, outline=outline, width=width)
 
-    def draw_line(self, *args, **kwargs) -> None:
-        return self.draw_polyline(*args, **kwargs)
+    def line(self, *args, **kwargs) -> None:
+        return self.polyline(*args, **kwargs)
 
-    def draw_polygon(self, polygon: Polygon, fill: Col = None, outline: Col = None, width: int = 1) -> None:
-        return self._draw_polyline(polyline=polygon, closed=True, fill=fill, outline=outline, width=width)
+    def polygon(self, polygon: Polygon, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+        return self._polyline(polyline=polygon, closed=True, fill=fill, outline=outline, width=width)
 
-    def draw_circle(self, circle: Circle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def circle(self, circle: Circle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
         # Always fill first:
         if fill is not None:
             cv2.circle(self.img.source, center=(circle.x, circle.y), color=self._col(fill), thickness=-1)

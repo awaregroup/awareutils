@@ -37,6 +37,9 @@ class ImgSize:
     def __eq__(self, other):
         return self.w == other.w and self.h == other.h
 
+    def __hash__(self):
+        return hash((self.w, self.h))
+
     @staticmethod
     def _validate_img_shape(*, w: int, h: int):
         if not isinstance(w, int) or not isinstance(h, int):

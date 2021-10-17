@@ -52,7 +52,7 @@ array([10, 10, 10, 10])
 array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
 ```
 
-Why? Because `sliced_arr` is a copy, so assigning to it doesn't change `x`. (Also remembering the `[:]` is a bit of a trick for new players.) Point is our above `shape.select_pixels(img)` won't work at all for assigning values, as at the end of our function we'd do something like `return bgr[shape.mask()]`. Since that creates a copy, we could never do nice things like changing colors etc. Also, as a side note, slicining with indices preserves dimensions, whereas slicing with a mask doesn't i.e.
+Why? Because `sliced_arr` is a copy, so assigning to it doesn't change `x`. (Also remembering the `[:]` is a bit of a trick for new players.) Point is our above `shape.select_pixels(img)` won't work at all for assigning values, as at the end of our function we'd do something like `return bgr[shape.mask()]`. Since that creates a copy, we could never do nice things like changing colors etc. Also, as a side note, slicing with indices preserves dimensions, whereas slicing with a mask doesn't i.e.
 
 ```python
 >>> x = np.ones((1920, 1080, 3), np.uint8) 
@@ -70,3 +70,13 @@ So, what do we do? Well:
 
 - Slicing in the sense of python `slices` only really makes sense for rectangles i.e. `bgr[b.y0:b.y1, b.x0:b.x1, :]`. So let's just add a custom `slice_array` method for that. For now, let's have `rectangle.slice_array(img)` return the sliced array directly, as that way we can guarantee that `img` is of the same pixel coordinates as the shape. However, since what we're really doing in the above case is just cropping the image, let's provide a method for that i.e. `img.crop(rectangle)` as that's a lot more obvious.
 - 'Slicing' with masks is risky, so let's not do it and, for now, leave it to the user. As above, much of the time we'll aim to provide convenience method (e.g. `shape.fill(bgr, 255)` to set it to `255` under the shape) so masking won't be used. But let's still provide a `shape.mask()` method so users can do what they wish with the mask themselves. (Masks are a lot more sensible with things like `np.logical_and` etc., or OpenCV functions.)
+
+### OpenCV and PIL?
+
+Yup, 'cos some libraries pick one or the other, so it's nice to be able to use one or the other under the hood. For now, let's see how it goes, and if it's too painful, we'd probably go with just OpenCV. 
+
+Assuming we're going with both, how do we allow people to pick just one without having them both imported? Well, see `awareutils/vision/mock.py` and it's use in `awareutils/vision/img.py` - basically, if we can't import OpenCV or PIL, we continue as fine until it's attempted to be used, in which case the `Mock`s `__getattr__` fires an exception.
+
+### Rectangles are defined by two pixels
+
+Yup - definition by pixels makes it easier and more consistent with other shapes. We've got `from_x0y0x1y1` and `from_xywh` for when you want to shortcut.

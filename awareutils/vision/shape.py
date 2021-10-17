@@ -143,52 +143,77 @@ class Rectangle(Shape):
     def __init__(
         self,
         *,
-        x0: int,
-        x1: int,
-        y0: int,
-        y1: int,
-        isize: ImgSize,
+        p0: Pixel,
+        p1: Pixel,
         clip: bool = False,
         fix_numeric_type: bool = True,
     ):
 
-        super().__init__(isize=isize, clip=clip, fix_numeric_type=fix_numeric_type)
-        self._x0 = self._validate_x(x0)
-        self._y0 = self._validate_y(y0)
-        self._x1 = self._validate_x(x1)
-        self._y1 = self._validate_y(y1)
-        self._validate_box()
+        if not isinstance(p0, Pixel):
+            raise ValueError("p0 should be a Pixel")
+        if not isinstance(p1, Pixel):
+            raise ValueError("p1 should be a Pixel")
+        if p0.isize != p1.isize:
+            raise ValueError("p0 and p1 should have the same isize i.e. coordinate system.")
+        if p0.x > p1.x:
+            raise ValueError("p0.x should be <= p1.x")
+        if p0.y > p1.y:
+            raise ValueError("p0.y should be <= p1.y")
+
+        self._p0 = p0
+        self._p1 = p1
+
+        super().__init__(isize=p0.isize, clip=clip, fix_numeric_type=fix_numeric_type)
+
+    @staticmethod
+    def from_x0y0x1y1(
+        isize: ImgSize, x0: int, y0: int, x1: int, y1: int, clip: bool = False, fix_numeric_type: bool = True
+    ):
+        p0 = Pixel(isize=isize, x=x0, y=y0)
+        p1 = Pixel(isize=isize, x=x1, y=y1)
+        return Rectangle(p0=p0, p1=p1, clip=clip, fix_numeric_type=fix_numeric_type)
+
+    @staticmethod
+    def from_x0y0wh(
+        x0: int, y0: int, w: int, h: int, isize: ImgSize, clip: bool = False, fix_numeric_type: bool = True
+    ) -> "Rectangle":
+        # Note the -1 here as x1/y1 are inclusive. If the box has width 1, i.e. a point, then x1 should equal x0.
+        p0 = Pixel(isize=isize, x=x0, y=y0)
+        p1 = Pixel(isize=isize, x=x0 + w - 1, y=y0 + h - 1)
+        return Rectangle(p0=p0, p1=p1, clip=clip, fix_numeric_type=fix_numeric_type)
+
+    @property
+    def p0(self) -> Pixel:
+        return self._p0
+
+    @property
+    def p1(self) -> Pixel:
+        return self._p1
 
     @property
     def x0(self) -> int:
-        return self._x0
+        return self._p0.x
 
     @property
     def y0(self) -> int:
-        return self._y0
+        return self._p0.y
 
     @property
     def x1(self) -> int:
-        return self._x1
+        return self._p1.x
 
     @property
     def y1(self) -> int:
-        return self._y1
+        return self._p1.y
 
     def __repr__(self):
-        return f"Box: x0={self._x0}, x1={self._x1}, y0={self._y0}, y1={self._y1})"
-
-    def _validate_box(self) -> None:
-        if self._x0 > self._x1:
-            raise ValueError("x0 should be <= x1")
-        if self._y0 > self._y1:
-            raise ValueError("y0 should be <= y1")
+        return f"Box: x0={self.x0}, x1={self.x1}, y0={self.y0}, y1={self.y1})"
 
     @property
     def center(self) -> "Pixel":
         return Pixel(
-            x=int((self._x1 + self._x0) / 2),
-            y=int((self._y1 + self._y0) / 2),
+            x=int((self.x1 + self.x0) / 2),
+            y=int((self.y1 + self.y0) / 2),
             isize=self._isize,
             clip=self._clip,
             fix_numeric_type=self._fix_numeric_type,
@@ -196,11 +221,11 @@ class Rectangle(Shape):
 
     @property
     def w(self) -> int:
-        return self._x1 - self._x0 + 1  # Since our x1 is inclusive
+        return self.x1 - self.x0 + 1  # Since our x1 is inclusive
 
     @property
     def h(self) -> int:
-        return self._y1 - self._y0 + 1  # Since our y1 is inclusize
+        return self.y1 - self.y0 + 1  # Since our y1 is inclusize
 
     @property
     def area(self) -> int:
@@ -221,19 +246,19 @@ class Rectangle(Shape):
                 )
             )
         # +1 as our x1/y1 are inclusive, not exclusive like numpy
-        return arr[self._y0 : self._y1 + 1, self._x0 : self._x1 + 1, ...]
+        return arr[self.y0 : self.y1 + 1, self.x0 : self.x1 + 1, ...]
 
     def intersection(self, rect: "Rectangle") -> Optional["Rectangle"]:
         if self._isize != rect.isize:
             raise RuntimeError("Can't compute IOU for rectangles defined one different image sizes.")
-        x0 = max(self._x0, rect.x0)
-        y0 = max(self._y0, rect.y0)
-        x1 = min(self._x1, rect.x1)
-        y1 = min(self._y1, rect.y1)
+        x0 = max(self.x0, rect.x0)
+        y0 = max(self.y0, rect.y0)
+        x1 = min(self.x1, rect.x1)
+        y1 = min(self.y1, rect.y1)
         if x0 >= x1 or y0 >= y1:
             return None
         else:
-            return self.__class__(x0=x0, y0=y0, x1=x1, y1=y1)
+            return Rectangle.from_x0y0x1y1(x0=x0, y0=y0, x1=x1, y1=y1)
 
     def iou(self, rect: "Rectangle") -> float:
         intersection = self.intersection(rect)
@@ -243,38 +268,38 @@ class Rectangle(Shape):
 
     def _project(self, isize: ImgSize) -> "Rectangle":
         return Rectangle(
-            isize=isize,
-            x0=self._project_x(x=self._x0, isize=isize),
-            y0=self._project_y(y=self._y0, isize=isize),
-            x1=self._project_x(x=self._x1, isize=isize),
-            y1=self._project_y(y=self._y1, isize=isize),
+            p0=self._p0.project(isize=isize),
+            p1=self._p1.project(isize=isize),
             clip=self._clip,
             fix_numeric_type=self._fix_numeric_type,
         )
 
-    @classmethod
-    def from_x0y0wh(
-        cls, x0: int, y0: int, w: int, h: int, isize: ImgSize, clip: bool = False, fix_numeric_type: bool = True
-    ):
-        # Note the -1 here as x1/y1 are inclusive. If the box has width 1, i.e. a point, then x1 should equal x0.
-        return cls(
-            x0=x0, y0=y0, x1=x0 + w - 1, y1=y0 + h - 1, isize=isize, clip=clip, fix_numeric_type=fix_numeric_type
-        )
-
 
 class PolyLine(Shape):
-    def __init__(self, *, pixels: List[Pixel], isize: ImgSize, clip: bool = False, fix_numeric_type: bool = True):
+    def __init__(self, *, pixels: List[Pixel], clip: bool = False, fix_numeric_type: bool = True):
 
-        super().__init__(isize=isize, clip=clip, fix_numeric_type=fix_numeric_type)
         if not isinstance(pixels, (list, tuple)):
             raise RuntimeError("pixels should be a list of tuple")
         if len(pixels) == 0:
             raise RuntimeError("must be at least one pixel to define a polygon!")
         if not all(isinstance(p, Pixel) for p in pixels):
             raise ValueError("All pixels must be Pixels")
-        if any(p.isize != isize for p in pixels):
-            raise ValueError("All pixels should have isize matching that provided.")
+        isizes = set([p.isize for p in pixels])
+        if len(isizes) != 1:
+            raise ValueError(f"All pixels should have the same isize but there are {len(isizes)}.")
+        super().__init__(isize=isizes.pop(), clip=clip, fix_numeric_type=fix_numeric_type)
         self._pixels = list(pixels)
+
+    @staticmethod
+    def from_xy(isize: ImgSize, xy: List, clip: bool = False, fix_numeric_type: bool = True) -> "PolyLine":
+        if not isinstance(xy, (tuple, list)):
+            raise RuntimeError("xy should be a tuple or list")
+        if len(xy) < 2:
+            raise RuntimeError("xy should have at least two elements")
+        if not all(isinstance(i, (tuple, list)) for i in xy):
+            raise RuntimeError("xy should be a tuple or list of tuples or lists")
+        pixels = [Pixel(isize=isize, x=x, y=y) for x, y in xy]
+        return PolyLine(pixels=pixels, clip=clip, fix_numeric_type=fix_numeric_type)
 
     @property
     def pixels(self) -> List[Pixel]:
@@ -309,13 +334,18 @@ class PolyLine(Shape):
 
 
 class Line(PolyLine):
-    def __init__(self, *, p0: Pixel, p1: Pixel, isize: ImgSize, clip: bool = False, fix_numeric_type: bool = True):
+    def __init__(self, *, p0: Pixel, p1: Pixel, clip: bool = False, fix_numeric_type: bool = True):
 
         if not isinstance(p0, Pixel):
             raise ValueError("p0 should be a Pixel")
         if not isinstance(p1, Pixel):
             raise ValueError("p1 should be a Pixel")
-        super().__init__(pixels=(p0, p1), isize=isize, clip=clip, fix_numeric_type=fix_numeric_type)
+        super().__init__(pixels=(p0, p1), clip=clip, fix_numeric_type=fix_numeric_type)
+
+    @staticmethod
+    def from_xy(isize: ImgSize, xy: List, clip: bool = False, fix_numeric_type: bool = True) -> "Line":
+        polyline = super().from_xy(isize=isize, xy=xy, clip=clip, fix_numeric_type=fix_numeric_type)
+        return Line(p0=polyline.pixels[0], p1=polyline.pixels[1], clip=clip, fix_numeric_type=fix_numeric_type)
 
     @property
     def p0(self) -> Pixel:
@@ -340,12 +370,17 @@ class Line(PolyLine):
 
 
 class Polygon(PolyLine):
-    def __init__(self, *, pixels: List[Pixel], isize: ImgSize, clip: bool = False, fix_numeric_type: bool = True):
+    def __init__(self, *, pixels: List[Pixel], clip: bool = False, fix_numeric_type: bool = True):
         # Check polygon is not closed
         if pixels[0] == pixels[-1]:
             logger.info("Polygons are specified without closure - ignoring the last point")
             pixels = pixels[:-1]
-        super().__init__(pixels=pixels, isize=isize, clip=clip, fix_numeric_type=fix_numeric_type)
+        super().__init__(pixels=pixels, clip=clip, fix_numeric_type=fix_numeric_type)
+
+    @staticmethod
+    def from_xy(isize: ImgSize, xy: List, clip: bool = False, fix_numeric_type: bool = True) -> "Polygon":
+        polyline = super().from_xy(isize=isize, xy=xy, clip=clip, fix_numeric_type=fix_numeric_type)
+        return Polygon(pixels=polyline.pixels, clip=clip, fix_numeric_type=fix_numeric_type)
 
     @property
     def pixels_closed(self) -> List[Pixel]:
@@ -365,17 +400,13 @@ class Polygon(PolyLine):
 
 
 class Circle(Shape):
-    def __init__(
-        self, *, isize: ImgSize, center: Pixel, radius: int, clip: bool = False, fix_numeric_type: bool = True
-    ):
+    def __init__(self, *, center: Pixel, radius: int, clip: bool = False, fix_numeric_type: bool = True):
         # TODO: check if circle is within the img or not?
-        super().__init__(isize=isize, clip=clip, fix_numeric_type=fix_numeric_type)
         if not isinstance(center, Pixel):
             raise RuntimeError("center should be a Pixel")
-        if not center.isize != isize:
-            raise RuntimeError("center.isize != isize i.e. different coordinate systems!")
         if not (isinstance(radius, int) and radius > 0):
             raise RuntimeError("radius should be a positive int")
+        super().__init__(isize=center.isize, clip=clip, fix_numeric_type=fix_numeric_type)
         self._center = center
         self._radius = radius
 

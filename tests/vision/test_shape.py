@@ -56,53 +56,53 @@ def test_pixel_project():
 
 
 def test_rectangle_constructor():
-    Rectangle(x0=0, y0=0, x1=10, y1=10, isize=IMG_SIZE)
+    Rectangle.from_x0y0x1y1(x0=0, y0=0, x1=10, y1=10, isize=IMG_SIZE)
     # Fails without keywords
     with pytest.raises(Exception):
-        Rectangle(0, 0, 10, 10, IMG_SIZE)
+        Rectangle.from_x0y0x1y1(0, 0, 10, 10, IMG_SIZE)
 
 
 def test_rectangle_oob_coordinates():
     with pytest.raises(Exception):
-        Rectangle(x0=0, y0=0, x1=IMG_SIZE.x, y1=IMG_SIZE.y, isize=IMG_SIZE)
+        Rectangle.from_x0y0x1y1(x0=0, y0=0, x1=IMG_SIZE.x, y1=IMG_SIZE.y, isize=IMG_SIZE)
 
 
 def test_rectangle_h():
-    r = Rectangle(x0=0, y0=0, x1=10, y1=10, isize=IMG_SIZE)
+    r = Rectangle.from_x0y0x1y1(x0=0, y0=0, x1=10, y1=10, isize=IMG_SIZE)
     assert r.h == 11
 
 
 def test_rectangle_w():
-    r = Rectangle(x0=0, y0=0, x1=10, y1=10, isize=IMG_SIZE)
+    r = Rectangle.from_x0y0x1y1(x0=0, y0=0, x1=10, y1=10, isize=IMG_SIZE)
     assert r.w == 11
 
 
 def test_rectangle_center():
-    r = Rectangle(x0=0, y0=0, x1=10, y1=10, isize=IMG_SIZE)
+    r = Rectangle.from_x0y0x1y1(x0=0, y0=0, x1=10, y1=10, isize=IMG_SIZE)
     assert r.center.x == 5 and r.center.y == 5
 
 
 def test_rectangle_area():
-    r = Rectangle(x0=0, y0=0, x1=10, y1=10, isize=IMG_SIZE)
+    r = Rectangle.from_x0y0x1y1(x0=0, y0=0, x1=10, y1=10, isize=IMG_SIZE)
     assert r.area == 11 * 11
 
 
 def test_rectangle_slice():
     arr = np.zeros((IMG_SIZE.h, IMG_SIZE.w, 3), np.uint8)
-    r = Rectangle(x0=0, y0=0, x1=10, y1=10, isize=IMG_SIZE)
+    r = Rectangle.from_x0y0x1y1(x0=0, y0=0, x1=10, y1=10, isize=IMG_SIZE)
     r.slice_array(arr)[...] = 1
     assert arr.sum() == 3 * 11 * 11
 
 
 def test_rectangle_slice_wrong_size():
     arr = np.zeros((10, 10, 3), np.uint8)
-    r = Rectangle(x0=0, y0=0, x1=10, y1=10, isize=IMG_SIZE)
+    r = Rectangle.from_x0y0x1y1(x0=0, y0=0, x1=10, y1=10, isize=IMG_SIZE)
     with pytest.raises(Exception):
         r.slice_array(arr)
 
 
 def test_rectangle_project():
-    r = Rectangle(x0=0, y0=0, x1=10, y1=10, isize=IMG_SIZE)
+    r = Rectangle.from_x0y0x1y1(x0=0, y0=0, x1=10, y1=10, isize=IMG_SIZE)
     p2 = r.project(isize=IMG_SIZE2)
     assert p2.x0 == 0 and p2.y0 == 0 and p2.x1 == 100 and p2.y1 == 100
 
