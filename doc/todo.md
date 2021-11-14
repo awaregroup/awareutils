@@ -2,7 +2,6 @@
 
 - Tests!
 - Add a pi camera class
-- https://uploadcare.com/blog/fast-import-of-pillow-images-to-numpy-opencv-arrays/
 - Push to pypi
 - Build pipeline in github.
 - Flake8 config and generally nicer build stuff.

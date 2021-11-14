@@ -114,9 +114,34 @@ class Img:
             raise ValueError("value must be a dict")
         self._metadata = value
 
+    @staticmethod
+    def _pil_to_numpy_rgb(img: PILImageModule.Image) -> np.ndarray:
+        """
+        See https://uploadcare.com/blog/fast-import-of-pillow-images-to-numpy-opencv-arrays/ Can be 2-3x faster.
+        """
+
+        img.load()
+        # unpack data
+        e = PILImageModule._getencoder(img.mode, "raw", img.mode)
+        e.setimage(img.im)
+
+        # NumPy buffer for the result
+        shape, typestr = PILImageModule._conv_type_shape(img)
+        rgb = np.empty(shape, dtype=np.dtype(typestr))
+        mem = rgb.data.cast("B", (rgb.data.nbytes,))
+
+        bufsize, s, offset = 65536, 0, 0
+        while not s:
+            l, s, d = e.encode(bufsize)
+            mem[offset : offset + len(d)] = d
+            offset += len(d)
+        if s < 0:
+            raise RuntimeError("encoder error %d in tobytes" % s)
+        return rgb
+
     def rgb(self) -> np.ndarray:
         if self.itype == ImgType.PIL:
-            arr = np.array(self.source)
+            arr = self._pil_to_numpy_rgb(self.source)
         elif self.itype == ImgType.RGB:
             arr = self.source
         elif self.itype == ImgType.BGR:
@@ -129,7 +154,7 @@ class Img:
 
     def bgr(self) -> np.ndarray:
         if self.itype == ImgType.PIL:
-            arr = cv2.cvtColor(np.array(self.source), cv2.COLOR_RGB2BGR)
+            arr = cv2.cvtColor(self._pil_to_numpy_rgb(self.source), cv2.COLOR_RGB2BGR)
         elif self.itype == ImgType.RGB:
             arr = cv2.cvtColor(self.source, cv2.COLOR_RGB2BGR)
         elif self.itype == ImgType.BGR:
