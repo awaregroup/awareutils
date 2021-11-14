@@ -1,7 +1,8 @@
 # TODO
 
-- tests!
+- Tests!
 - Add a pi camera class
+- https://uploadcare.com/blog/fast-import-of-pillow-images-to-numpy-opencv-arrays/
 - Push to pypi
 - Build pipeline in github.
 - Flake8 config and generally nicer build stuff.
@@ -13,13 +14,19 @@
 - OpenCV:
   - Automatically search USB devices if you don't know which number (as it's a bit weird) ...
   - Automatically search supported fourcc in videowriter (or does -1 do that?). At least find some good fourcc defaults.
-  - A nicer display GUI that wraps window creation, waitkey, etc.
+  - A dynamic FPS video writer? Not sure if it's possible, but if we change the FPS we're writing, how do we tell the video the FPS has changed? https://github.com/iizukanao/picam talks of VFR but doesn't seem like it's supported in opencv etc. Or see here https://forums.raspberrypi.com/viewtopic.php?t=98541 - maybe just save the pts/timecodes (raspberry pi is easy, less sure about opencv etc., but I guess we could do it in our `write` method and hope linux clocks are OK and nothing's blocking!) and then use a tool like `mkvmerge` to create a new VFR video. (Note that reading that back in with opencv won't work, I suspect, as we just get the next frame, and not the pts etc. I guess we could also preprocess with something like ffmpeg to extract the vfr timecodes, and load them in parallel from opencv and do the necessary delays etc.)
+  - A nicer display GUI that
+    - Does nice window creation inc. aspect ratio preservation (i.e. pad with black)
+    - Maybe have a "notes" functionality where you can see info somewhere instead of drawn over the image itself? E.g. in the padded black area above.
+    - Nicer waitkey etc.
+    - Nicer mouser handlers.
+    - Possibly some default features like zooming (trigger with 'z' and use selectROI to zoom in), or 's' to save the image, or maybe some nice way to say "just record this whole window to a video here please".
 - Add fast video seeking to FileCapture.
 - Shape:
   - `shape.bounding_box` method
   - `shape.mask` method
 - Add v4l2 loopback videowriter
-- Using a 2d mask on a 3d image. Or maybe just have a `shape.mask3d()` method.
+- Using a 2d mask on a 3d image. (Hint: cv2.bitwise_and(.., mask=) or bitwise_or) Or maybe just have a `shape.mask3d()` method.
 - Figure out nicer solution for circular imports
 - Performance:
   - Cythonize some of the shape stuff (coordinate checking etc.) to keep that fast.
