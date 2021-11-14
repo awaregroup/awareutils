@@ -1,8 +1,8 @@
-from awareutils.vision.col import Col, DivergingPalette, NamedCols, pick_col
+from awareutils.vision.col import Col, DivergingPalette, pick_col
 
 
 def test_white():
-    white = NamedCols.white
+    white = Col.named.white
     assert white.r == 255
     assert white.g == 255
     assert white.b == 255

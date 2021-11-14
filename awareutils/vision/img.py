@@ -330,6 +330,10 @@ class Img:
     ) -> "Img":
         return cls.new(size=size, itype=ImgType.RGB, metadata=metadata)
 
+    @property
+    def draw(self) -> Union["Drawer"]:
+        raise NotImplementedError("You shouldn't be seeing this ... it should be overridden")
+
 
 # Ewwww, getting around circular imports ...
 from awareutils.vision.draw import Drawer, OpenCVDrawer, PILDrawer

@@ -5,6 +5,8 @@ from loguru import logger
 
 
 class Col:
+    named: "NamedCols"
+
     def __init__(self, r: int, g: int, b: int, clip: bool = False, fix_numeric_type: bool = True):
         self._clip = clip
         self._fix_numeric_type = fix_numeric_type
@@ -260,3 +262,6 @@ class NamedCols:
     white_smoke = Col(245, 245, 245)
     yellow = Col(255, 255, 0)
     yellow_green = Col(154, 205, 50)
+
+
+Col.named = NamedCols
