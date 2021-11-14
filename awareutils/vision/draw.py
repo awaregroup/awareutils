@@ -124,19 +124,19 @@ class PILDrawer(Drawer):
         # PILImageDraw.polygon doesn't support width, but line does. So use polygon unless we need an outline of
         # width != 1
         pixels = [(p.x, p.y) for p in polygon.pixels]
-        self._imgdraw.polygon(pixels, fill=_none_or_rgb(fill.rgb), outline=_none_or_rgb(outline.rgb))
+        self._imgdraw.polygon(pixels, fill=_none_or_rgb(fill), outline=_none_or_rgb(outline))
         # OK, the cases where we need custom width ...
         if outline is not None and width != 1 and (fill is None or fill != outline):
             pixels = [(p.x, p.y) for p in polygon.pixels_closed]
-            self._imgdraw.line(pixels, outline=outline.rgb, width=width)
+            self._imgdraw.line(pixels, fill=outline.rgb, width=width)
 
     def circle(self, circle: Circle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
         circle = self._check_args(shape=circle, outline=outline, fill=fill, width=width)
         cx, cy, r = circle.center.x, circle.center.y, circle.radius
         self._imgdraw.ellipse(
             xy=[(cx - r, cy - r), (cx + r, cy + r)],
-            fill=_none_or_rgb(fill.rgb),
-            outline=_none_or_rgb(outline.rgb),
+            fill=_none_or_rgb(fill),
+            outline=_none_or_rgb(outline),
             width=width,
         )
 
@@ -199,11 +199,12 @@ class OpenCVDrawer(Drawer):
 
     def circle(self, circle: Circle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
         # Always fill first:
+        center = (circle.center.x, circle.center.y)
         if fill is not None:
-            cv2.circle(self.img.source, center=(circle.x, circle.y), color=self._col(fill), thickness=-1)
+            cv2.circle(self.img.source, center=center, radius=circle.radius, color=self._col(fill), thickness=-1)
         # Only outline if we need to:
         if outline is not None and (fill is None or outline != fill or width > 1):
-            cv2.circle(self.img.source, center=(circle.x, circle.y), color=self._col(outline), thickness=width)
+            cv2.circle(self.img.source, center=center, radius=circle.radius, color=self._col(outline), thickness=width)
 
     def _col(self, col: Col):
         if col is None:

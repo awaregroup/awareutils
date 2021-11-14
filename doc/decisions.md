@@ -80,3 +80,11 @@ Assuming we're going with both, how do we allow people to pick just one without 
 ### Rectangles are defined by two pixels
 
 Yup - definition by pixels makes it easier and more consistent with other shapes. We've got `from_x0y0x1y1` and `from_xywh` for when you want to shortcut.
+
+### Words and spelling
+
+We chose the following spellings and encourage their use as a) it adds consistency (by avoiding having various different spellings), b) they're brief and easy to type, and c) it keeps us distinct from other libraries (which chose one of the correct spellings).
+
+- `img` (vs `img|image`)
+- `col` (vs `col|color|colour`)
+- `fidx` to refer to the frame index (as opposed to `fidx|idx|i|index` etc.)
