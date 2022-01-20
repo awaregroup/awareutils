@@ -304,8 +304,8 @@ class ThreadedOpenCVLiveVideoCapture(ModularThreadedVideoCapture):
 
         # Do this in here - opencv won't let us access this outside the thread, so we can't do `self._vi.get(...)` in
         # the main loop, and hence we set it here for our main props to read.
-        self._width = int(self._vi.get(cv2.CAP_PROP_FRAME_WIDTH))
-        self._height = int(self._vi.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        self._width = int(vi.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self._height = int(vi.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
         self._vi = vi
 
