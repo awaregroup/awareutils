@@ -64,7 +64,7 @@ class VideoCapture(metaclass=ABCMeta):
 
 class VideoWriter(metaclass=ABCMeta):
     """
-    Class that reads a generic camera in a separate thread.
+    Generic class for writing video.
     """
 
     @abstractmethod
@@ -205,8 +205,8 @@ class ModularThreadedVideoCapture(VideoCapture, metaclass=ABCMeta):
 
     @staticmethod
     def _block_until(event, timeout=None):
-        set = event.wait(timeout=timeout)
-        if not set:
+        is_set = event.wait(timeout=timeout)
+        if not is_set:
             raise ValueError(f"Couldn't get event within {timeout} seconds!")
 
     @property
@@ -365,39 +365,91 @@ class ThreadedOpenCVFileVideoCapture(ModularThreadedVideoCapture):
             self._vi.release()
 
 
-class ThreadedOpenCVVideoWriter(VideoWriter):
+class ThreadedVideoWriter(VideoWriter, metaclass=ABCMeta):
+    """
+    Class that writes video in a separate thread. The main change here is that we ensure we don't close while we're in
+    the middle of writing.
+
+    TODO: handle the case where we can't write fast enough and the queue keeps growing. We could also have a version
+    where we only write the latest frame (and who cares if we skip a few).
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._q = Queue()
+        self._closed: threading.Event = None
+
+    def open(self):
+        logger.info("Starting writer")
+        self._closed = threading.Event()
+        t = threading.Thread(target=self._run, args=())
+        t.daemon = True
+        t.start()
+        return t
+
+    @abstractmethod
+    def _open_in_thread(self, *args, **kwargs):
+        pass
+
+    def write(self, img: Img):
+        if not self._running:
+            raise RuntimeError("ThreadedVideoWriter is not running, so can't write to it. Check the logs.")
+        self._q.put((False, img))  # First arg is whether we want to stop or not.
+
+    @abstractmethod
+    def _write_in_thread(self, img: Img):
+        pass
+
+    def _run(self):
+        self._running = True
+        try:
+            self._open_in_thread()
+            while self._running:
+                stop, img = self._q.get()
+                if stop:
+                    break
+                else:
+                    self._write_in_thread(img)
+        except:  # NOQA
+            logger.exception("Failed while writing!")
+        self._running = False
+        self._close_in_thread()
+        self._closed.set()
+
+    @abstractmethod
+    def _close_in_thread(self, *args, **kwargs):
+        pass
+
+    def close(self, timeout=None):
+        # Add a 'stop' item to the queue - this is our way of telling the _run function to stop processing. (It's a bit
+        # of a hack for now to stop the _run method hanging on self._q.get(). TODO make this nicer = ) ) Note that this
+        # has the side effect of clearing out the queue before we close (as we're putting on the end)
+        self._q.put((True, None))
+        # Now wait for any processing to have finished (and the above item to be processed) - this avoids us closing
+        # while the thread is still running. Timeout, just in case something goes wrong.
+        is_set = self._closed.wait(timeout=timeout)
+        if not is_set:
+            raise RuntimeError(f"Didn't close within {timeout} seconds!")
+
+
+class ThreadedOpenCVVideoWriter(ThreadedVideoWriter):
     def __init__(self, path: Union[Path, str], height: int, width: int, fps: int):
+        super().__init__()
         if not isinstance(path, (Path, str)):
             raise ValueError("path must be a Path or str")
         self.path = str(path)
         self.height = height
         self.width = width
         self.fps = fps
-        self._q = Queue()
+        self._vo = None
 
-    def open(self):
-        logger.info("Starting writer")
-        t = threading.Thread(target=self._run, args=())
-        t.daemon = True
-        t.start()
-        return t
-
-    def write(self, img: Img):
-        self._q.put(img.bgr())
-
-    def _run(self):
-        self._running = True
-        # TODO: more fourcc
+    def _open_in_thread(self, *args, **kwargs):
         self._vo = cv2.VideoWriter(self.path, cv2.VideoWriter_fourcc(*"XVID"), self.fps, (self.width, self.height))
         if not self._vo.isOpened():
             raise RuntimeError("Failed to open writer!")
-        while self._running:
-            bgr = self._q.get()
-            self._vo.write(bgr)
 
-    def close(self):
-        self._stop()
+    def _write_in_thread(self, img: Img):
+        self._vo.write(img.bgr())
+
+    def _close_in_thread(self):
         self._vo.release()
-
-    def _stop(self):
-        self._running = False
