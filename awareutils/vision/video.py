@@ -5,7 +5,7 @@ from abc import ABCMeta, abstractmethod, abstractproperty
 from dataclasses import dataclass
 from pathlib import Path
 from queue import Queue
-from typing import Iterator, Union
+from typing import Any, Iterator, Union
 
 from awareutils.vision.img import Img
 from loguru import logger
@@ -256,20 +256,26 @@ class ModularThreadedVideoCapture(VideoCapture, metaclass=ABCMeta):
 
 
 class ThreadedOpenCVLiveVideoCapture(ModularThreadedVideoCapture):
-    def __init__(self, device: int, height: int = None, width: int = None, fps: int = None):
+    def __init__(self, device: Any, height: int = None, width: int = None, fps: int = None, api: int = None):
         super().__init__(finite=False, non_skipping=False, simulated_read_fps=False)
         # TODO: check they're the right types
         self._device = device
         self._intended_height = height
         self._intended_width = width
         self._intended_fps = fps
+        self._api = api
         self._vi = None
         self._width = None
         self._height = None
 
     def _open_capture(self) -> bool:
-        if platform.system() == "Windows":
-            logger.warning("You're on Windows trying to read a USB device so opening with cv2.CAP_DSHOW")
+        if platform.system().lower() == "windows" and self._api is None:
+            logger.warning(
+                (
+                    "You're on Windows trying to read a USB device so opening with cv2.CAP_DSHOW. You might want to try"
+                    " api=cv2.CAP_MSMF if that doesn't work well for you."
+                )
+            )
             vi = cv2.VideoCapture(self._device, cv2.CAP_DSHOW)
         else:
             vi = cv2.VideoCapture(self._device)
