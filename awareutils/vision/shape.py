@@ -258,7 +258,7 @@ class Rectangle(Shape):
         if x0 >= x1 or y0 >= y1:
             return None
         else:
-            return Rectangle.from_x0y0x1y1(x0=x0, y0=y0, x1=x1, y1=y1)
+            return Rectangle.from_x0y0x1y1(x0=x0, y0=y0, x1=x1, y1=y1, isize=self._isize)
 
     def iou(self, rect: "Rectangle") -> float:
         intersection = self.intersection(rect)
