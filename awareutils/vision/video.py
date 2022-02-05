@@ -1,3 +1,4 @@
+import collections
 import platform
 import threading
 import time
@@ -25,6 +26,40 @@ class CameraFrame:
 
 class NoMoreFrames(Exception):
     pass
+
+
+@dataclass
+class FPS:
+    last_frame_duration_ms: float
+    smoothed_duration_ms: float
+
+    @property
+    def last_frame_fps(self) -> float:
+        if self.last_frame_duration_ms is None:
+            return None
+        elif self.last_frame_duration_ms == 0:
+            return float("Inf")
+        else:
+            return 1 / self.last_frame_duration_ms
+
+    @property
+    def smoothed_fps(self) -> float:
+        if self.smoothed_duration_ms is None:
+            return None
+        elif self.smoothed_duration_ms == 0:
+            return float("Inf")
+        else:
+            return 1 / self.smoothed_duration_ms
+
+
+def _calculate_fps(times) -> FPS:
+    last_duration_ms = None
+    smoothed_duration_ms = None
+    # print(times)
+    if len(times) >= 2:
+        last_duration_ms = (times[-1] - times[-2]) * 1000
+        smoothed_duration_ms = (times[-1] - times[0]) / (len(times) - 1) * 1000
+    return FPS(last_frame_duration_ms=last_duration_ms, smoothed_duration_ms=smoothed_duration_ms)
 
 
 class VideoCapture(metaclass=ABCMeta):
@@ -97,6 +132,7 @@ class ModularThreadedVideoCapture(VideoCapture, metaclass=ABCMeta):
 
         self._current_img = None
         self._running = False
+        self._thread = None
         self._fidx = -1
         self._capture_open_event = threading.Event()
         self._first_frame_event = threading.Event()
@@ -105,6 +141,8 @@ class ModularThreadedVideoCapture(VideoCapture, metaclass=ABCMeta):
         self._height = None
         self._width = None
         self._no_more_frames = False
+        self._read_times = collections.deque([], maxlen=10)
+        self._yield_times = collections.deque([], maxlen=10)
 
     @abstractmethod
     def _open_capture(self, *args, **kwargs) -> bool:
@@ -132,19 +170,31 @@ class ModularThreadedVideoCapture(VideoCapture, metaclass=ABCMeta):
     def _get_width(self) -> int:
         pass
 
-    def open(self):
+    def _start(self):
         logger.info("Starting camera")
-        t = threading.Thread(target=self._run, args=())
-        t.daemon = True
-        t.start()
-        return t
+        self._thread = threading.Thread(target=self._run, args=())
+        self._thread.daemon = True
+        self._thread.start()
+
+    def open(self):
+        self._start()
 
     def close(self):
         self._stop()
-        self._close_capture()
+        self._read_times.clear()
+        self._yield_times.clear()
+        self._fidx = None
+        self._current_img = None
+
+    def is_alive(self) -> bool:
+        if self._thread is None:
+            raise RuntimeError("Thread isn't initialized!")
+        self._block_until(self._capture_open_event, timeout=5)
+        return self._thread.is_alive()
 
     def _run(self):
         self._running = True
+        # With OpenCV, everything has to happen in one thread, so we need to open, read, and close, all in this loop.
         logger.info("Trying to open camera")
         try:
             self._open_capture()
@@ -152,14 +202,14 @@ class ModularThreadedVideoCapture(VideoCapture, metaclass=ABCMeta):
         except:  # NOQA
             logger.exception("Failed to open camera!")
             self._stop()
-            return
+            self._running = False
 
         self._frame_yielded_event.set()
         last_new_frame_triggered = None
         while self._running:
             try:
-                # TODO: slow down read time if desired
                 img = self._read_frame()
+                self._read_times.append(time.time())
                 # If we're non-skipping, we don't want to read until we've yielded the last one - usually when we're
                 # reading a video we don't want to skip frames. Note that we do this after reading (which can be
                 # expensive computationally)
@@ -187,16 +237,17 @@ class ModularThreadedVideoCapture(VideoCapture, metaclass=ABCMeta):
             except NoMoreFrames:
                 # Don't alert about this if we're a finite capture (e.g. a video file), which should finish ...
                 if not self._finite:
-                    logger.exception("Failed to read frame!")  # TODO: if the video ends this is fine so don't spam
+                    logger.exception("Failed to read frame!")
                 # Trigger one last new_frame_or_no_more_frames_event so our read() function can unblock ... note that we
                 # should really tidy this up a bit with condition etc. and don't give our events two purposes
                 self._no_more_frames = True
                 self._new_frame_or_no_more_frames_event.set()
                 break
             except:  # NOQA
-                logger.exception("General read failure!")  # TODO: if the video ends this is fine so don't spam
+                logger.exception("General read failure!")
                 break
 
+        # Close here in thread
         self._close_capture()
         self._stop()
 
@@ -249,10 +300,14 @@ class ModularThreadedVideoCapture(VideoCapture, metaclass=ABCMeta):
                     )
             last_fidx = fidx
             self._frame_yielded_event.set()
+            self._yield_times.append(time.time())
             yield CameraFrame(fidx=fidx, img=img)
 
-    def fps(self):
-        raise NotImplemented("Read FPS of camera and yield")
+    def read_fps(self) -> FPS:
+        return _calculate_fps(self._read_times)
+
+    def yielded_fps(self) -> FPS:
+        return _calculate_fps(self._yield_times)
 
 
 class ThreadedOpenCVLiveVideoCapture(ModularThreadedVideoCapture):
@@ -384,6 +439,7 @@ class ThreadedVideoWriter(VideoWriter, metaclass=ABCMeta):
         super().__init__()
         self._q = Queue()
         self._closed: threading.Event = None
+        self._write_times = collections.deque([], maxlen=10)
 
     def open(self):
         logger.info("Starting writer")
@@ -412,10 +468,12 @@ class ThreadedVideoWriter(VideoWriter, metaclass=ABCMeta):
             self._open_in_thread()
             while self._running:
                 stop, img = self._q.get()
+                # TODO: errors if q is getting too long
                 if stop:
                     break
                 else:
                     self._write_in_thread(img)
+                    self._write_times.append(time.time())
         except:  # NOQA
             logger.exception("Failed while writing!")
         self._running = False
@@ -436,6 +494,11 @@ class ThreadedVideoWriter(VideoWriter, metaclass=ABCMeta):
         is_set = self._closed.wait(timeout=timeout)
         if not is_set:
             raise RuntimeError(f"Didn't close within {timeout} seconds!")
+
+    # TODO: add the requested write FPS?
+
+    def write_fps(self) -> FPS:
+        return _calculate_fps(self._write_times)
 
 
 class ThreadedOpenCVVideoWriter(ThreadedVideoWriter):
