@@ -71,7 +71,7 @@ class Shape(metaclass=ABCMeta):
                 raise ValueError("Coordinate must be >= 0")
 
         # And *less than* (but not equal to!) img coordinates:
-        if maximum is not None and d >= maximum:
+        if maximum is not None and d > maximum:
             if self._clip:
                 d = maximum
                 logger.debug("Coordinate must be < {maximum} - clipping.", maximum=maximum)
@@ -111,7 +111,7 @@ class Pixel(Shape):
         self._y = self._validate_y(y)
 
     def __repr__(self):
-        return f"Point: x={self._x}, y={self._y}"
+        return f"Pixel: x={self._x}, y={self._y}"
 
     @property
     def center(self) -> "Pixel":
@@ -207,7 +207,7 @@ class Rectangle(Shape):
         return self._p1.y
 
     def __repr__(self):
-        return f"Box: x0={self.x0}, x1={self.x1}, y0={self.y0}, y1={self.y1})"
+        return f"Rectangle: x0={self.x0}, x1={self.x1}, y0={self.y0}, y1={self.y1}"
 
     @property
     def center(self) -> "Pixel":
@@ -290,6 +290,9 @@ class PolyLine(Shape):
         super().__init__(isize=isizes.pop(), clip=clip, fix_numeric_type=fix_numeric_type)
         self._pixels = list(pixels)
 
+    def __repr__(self) -> str:
+        return f"PolyLine: pixels={self.pixels}"
+
     @staticmethod
     def from_xy(isize: ImgSize, xy: List, clip: bool = False, fix_numeric_type: bool = True) -> "PolyLine":
         if not isinstance(xy, (tuple, list)):
@@ -304,9 +307,6 @@ class PolyLine(Shape):
     @property
     def pixels(self) -> List[Pixel]:
         return self._pixels
-
-    def __repr__(self):
-        return f"PolyLine: pixels={self._pixels}"
 
     @property
     def center(self) -> "Pixel":

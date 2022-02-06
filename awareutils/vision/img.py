@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict, Optional, Union
 
 import numpy as np
+from awareutils.vision.col import Col
 from loguru import logger
 
 # Import only what we need
@@ -39,6 +40,9 @@ class ImgSize:
 
     def __hash__(self):
         return hash((self.w, self.h))
+
+    def __repr__(self) -> str:
+        return f"ImgSize(h={self.h}, w={self.w})"
 
     @staticmethod
     def _validate_img_shape(*, w: int, h: int):
@@ -297,38 +301,44 @@ class Img:
         cls,
         size: ImgSize,
         itype: ImgType,
+        col: Col = Col.named.black,
         metadata: Optional[Dict] = None,
     ) -> "Img":
         if itype == ImgType.PIL:
             return Img(
-                source=PILImageModule.new("RGB", size=(size.w, size.h), color=(0, 0, 0)), itype=itype, metadata=metadata
+                source=PILImageModule.new("RGB", size=(size.w, size.h), color=col.rgb), itype=itype, metadata=metadata
             )
         elif itype in (ImgType.RGB, ImgType.BGR):
-            return Img(source=np.zeros((size.h, size.w, 3), np.uint8), itype=itype, metadata=metadata)
+            source = np.zeros((size.h, size.w, 3), np.uint8)
+            source[:, :, :] = col.rgb if itype == ImgType.RGB else col.bgr
+            return Img(source=source, itype=itype, metadata=metadata)
 
     @classmethod
     def new_pil(
         cls,
         size: ImgSize,
+        col: Col = Col.named.black,
         metadata: Optional[Dict] = None,
     ) -> "Img":
-        return cls.new(size=size, itype=ImgType.PIL, metadata=metadata)
+        return cls.new(size=size, itype=ImgType.PIL, metadata=metadata, col=col)
 
     @classmethod
     def new_bgr(
         cls,
         size: ImgSize,
+        col: Col = Col.named.black,
         metadata: Optional[Dict] = None,
     ) -> "Img":
-        return cls.new(size=size, itype=ImgType.BGR, metadata=metadata)
+        return cls.new(size=size, itype=ImgType.BGR, metadata=metadata, col=col)
 
     @classmethod
     def new_rgb(
         cls,
         size: ImgSize,
+        col: Col = Col.named.black,
         metadata: Optional[Dict] = None,
     ) -> "Img":
-        return cls.new(size=size, itype=ImgType.RGB, metadata=metadata)
+        return cls.new(size=size, itype=ImgType.RGB, metadata=metadata, col=col)
 
     @property
     def draw(self) -> Union["Drawer"]:

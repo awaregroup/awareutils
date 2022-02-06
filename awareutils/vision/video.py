@@ -97,31 +97,6 @@ class VideoCapture(metaclass=ABCMeta):
         self.close()
 
 
-class VideoWriter(metaclass=ABCMeta):
-    """
-    Generic class for writing video.
-    """
-
-    @abstractmethod
-    def open(self):
-        pass
-
-    @abstractmethod
-    def close(self, *args, **kwargs):
-        pass
-
-    @abstractmethod
-    def write(self, img: Img):
-        pass
-
-    def __enter__(self):
-        self.open()
-        return self
-
-    def __exit__(self, *args, **kwargs):
-        self.close()
-
-
 class ModularThreadedVideoCapture(VideoCapture, metaclass=ABCMeta):
     def __init__(self, non_skipping: bool, finite: bool, simulated_read_fps: float = None, *args, **kwargs):
         # TODO: check types or args
@@ -189,7 +164,6 @@ class ModularThreadedVideoCapture(VideoCapture, metaclass=ABCMeta):
     def is_alive(self) -> bool:
         if self._thread is None:
             raise RuntimeError("Thread isn't initialized!")
-        self._block_until(self._capture_open_event, timeout=5)
         return self._thread.is_alive()
 
     def _run(self):
@@ -426,6 +400,31 @@ class ThreadedOpenCVFileVideoCapture(ModularThreadedVideoCapture):
             self._vi.release()
 
 
+class VideoWriter(metaclass=ABCMeta):
+    """
+    Generic class for writing video.
+    """
+
+    @abstractmethod
+    def open(self):
+        pass
+
+    @abstractmethod
+    def close(self, *args, **kwargs):
+        pass
+
+    @abstractmethod
+    def write(self, img: Img):
+        pass
+
+    def __enter__(self):
+        self.open()
+        return self
+
+    def __exit__(self, *args, **kwargs):
+        self.close()
+
+
 class ThreadedVideoWriter(VideoWriter, metaclass=ABCMeta):
     """
     Class that writes video in a separate thread. The main change here is that we ensure we don't close while we're in
@@ -440,6 +439,7 @@ class ThreadedVideoWriter(VideoWriter, metaclass=ABCMeta):
         self._q = Queue()
         self._closed: threading.Event = None
         self._write_times = collections.deque([], maxlen=10)
+        self._running = False
 
     def open(self):
         logger.info("Starting writer")
@@ -485,6 +485,7 @@ class ThreadedVideoWriter(VideoWriter, metaclass=ABCMeta):
         pass
 
     def close(self, timeout=None):
+        # TODO: do we empty the queue?
         # Add a 'stop' item to the queue - this is our way of telling the _run function to stop processing. (It's a bit
         # of a hack for now to stop the _run method hanging on self._q.get(). TODO make this nicer = ) ) Note that this
         # has the side effect of clearing out the queue before we close (as we're putting on the end)

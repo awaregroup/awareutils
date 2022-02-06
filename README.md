@@ -41,12 +41,14 @@ You can see more about some of the design decisions in [./doc/decisions.md](./do
 - Confusiong around RGB vs BGR. So we're explicit.
 - Confusion between PIL and OpenCV. Support both, and conversion between.
 - Separation of annotations from image - so we allow saving metadata in the image EXIF metadata.
-- When reading an OpenCV camera, the buffer can lag - so do it in a thread. Likewise, thread it all up for performance.
+- When reading an OpenCV camera, the buffer can lag - so do it in a thread. Likewise, thread up all the things for performance. This is surprisingly hard to do well and cover all cases.
+- On that note, OpenCV and threads can be lots of fun e.g. some operations have to stay in the same thread context etc. which can result in weird bugs (e.g. `.get`ing attributes from a `VideoCapture` from another thread).
 - Pixel coordinates (vs normalised) are confusing. See above. Fix by being a little explicit and only using pixel coordinates, not using the term "Point", etc.
 - Invalid shape coordinates (e.g. outside image etc.). Check for this, and fix, etc.
 - Bounding box formats (x0y0x1y1, x0y0wh, xcycwh, etc.) - be explicit. Likewise `(w, h)` vs `(h, w)` - be explicit by forcing kwargs.
 - Annoyance setting up OpenCV windows fullscreen etc. Provide some utils.
-- Threadig. It's the way to do things faster, but it's hard to do it right with the right features.
+- Threading. It's the way to do things faster, but it's hard to do it right with the right features.
+- Putting information on top of images with a GUI. This works, but often obscures the image, and you have to manually mess with offsets etc. Let's just have a "write all these lines to a 'console' on the GUI" option.
 
 ## Developing
 
