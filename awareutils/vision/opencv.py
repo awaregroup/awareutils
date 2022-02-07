@@ -1,10 +1,9 @@
 import threading
 import time
-from cgitb import text
-from cmath import rect
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from queue import Queue
+from tkinter import W
 from typing import Callable, List, Tuple, Union
 
 import cv2
@@ -16,11 +15,18 @@ from loguru import logger
 
 
 @dataclass
+class ConsoleText:
+    text: str
+    font_height: float = 0.02
+    col: Col = Col.named.aware_blue_light
+
+
+@dataclass
 class _DrawTask:
-    stop: bool
     img: Img
-    text: Union[str, List[str]]
-    delay_ms: float
+    stop: bool = False
+    console_texts: List[ConsoleText] = field(default_factory=[])
+    delay_ms: float = 1
 
 
 def default_keyboard_callback(key: int) -> bool:
@@ -54,7 +60,7 @@ class OpenCVGUI:
         self._min_console_ppn = min_console_ppn
         self._console_col = console_col
         self._padding_col = padding_col
-        self._out_bgr: np.ndarray = None
+        self._out: Img = None
         self._out_img_rect: Rectangle = None
         self._out_console_rect: Rectangle = None
         self._q = Queue()
@@ -153,7 +159,7 @@ class OpenCVGUI:
         logger.debug("console_rect: {console_rect}", console_rect=console_rect)
 
         # Save things
-        self._out_bgr = Img.new_bgr(window_size, col=self._padding_col).bgr()
+        self._out = Img.new_bgr(window_size, col=self._padding_col)
         self._out_img_rect = drawn_img_rect
         self._out_console_rect = console_rect
         self._window_setup = True
@@ -165,29 +171,29 @@ class OpenCVGUI:
         assert not task.stop
 
         # Clear out console:
-        self._out_console_rect.slice_array(self._out_bgr)[:, :, :] = self._console_col.bgr
+        self._out_console_rect.slice_array(self._out.bgr())[:, :, :] = self._console_col.bgr
 
         # Copy image over
         resized = task.img.resize(ImgSize(w=self._out_img_rect.w, h=self._out_img_rect.h))
-        self._out_img_rect.slice_array(self._out_bgr)[:, :, :] = resized.bgr()
-        # self._out[
-        #     self._out_img_rect.y0 : self._out_img_rect.y1 + 1, self._out_img_rect.x0 : self._out_img_rect.x1, :
-        # ] = resized.bgr()
+        self._out_img_rect.slice_array(self._out.bgr())[:, :, :] = resized.bgr()
 
         # Now draw the console text if needed:
-        if task.text is not None:
+        console_texts = task.console_texts
+        if console_texts is not None:
             if self._min_console_ppn == 0:
                 raise RuntimeError("Can't draw console text unless you set console_ppn > 0")
-            # TODO: write it
-            if isinstance(task.text, str):
-                logger.warning("TODO: write {text}", text=task.text)
-            elif isinstance(task.text, Iterable):
-                for text in task.text:
-                    logger.warning("TODO: write {text}", text=text)
-            else:
-                raise RuntimeError("Unknown type {tipe} for text argument", tipe=type(task.text))
+            # Write the console out
+            console_line_top_left = self._out_console_rect.p0.copy()
+            console_line_top_left.y += 2
+            for ct in console_texts:
+                font_size = self._out.draw.text(
+                    text=ct.text, height=ct.font_height, col=ct.col, origin=console_line_top_left
+                )
+                # Add height to get next position, but 10% of text height for spacing
+                console_line_top_left.y += int(1.1 * (font_size.height + font_size.baseline))
+                # TODO: check if o.y > img height i.e. too much text
 
-        cv2.imshow(self._window_name, self._out_bgr)
+        cv2.imshow(self._window_name, self._out.bgr())
         k = cv2.waitKey(task.delay_ms) & 0xFF
         if self._keyboard_callback is not None:
             close = self._keyboard_callback(k)
@@ -225,13 +231,14 @@ class OpenCVGUI:
         self._running = False
         self._closed.set()
 
-    def draw(self, img: Img, delay_ms: float = 0, text: Union[str, List[str]] = None) -> bool:
+    def draw(self, img: Img, delay_ms: float = 0, console_text: Union[str, List[str]] = None) -> bool:
         """
         Return true if GUI is closed (because of error or keyboard interaction).
         """
         if self._closed.is_set():
             return True
-        task = _DrawTask(stop=False, img=img, delay_ms=delay_ms, text=text)
+        console_text = console_text if isinstance(console_text, Iterable) else [console_text]
+        task = _DrawTask(stop=False, img=img, delay_ms=delay_ms, console_texts=console_text)
         self._q.put(task)
         return False
 
@@ -246,7 +253,7 @@ class OpenCVGUI:
         self._q.empty()
         # Add a 'stop' item to the queue - this is our way of telling the _run function to stop processing. (It's a bit
         # of a hack for now to stop the _run method hanging on self._q.get(). TODO make this nicer = ) )
-        self._q.put(_DrawTask(stop=True, img=None, text=None, delay_ms=None))
+        self._q.put(_DrawTask(stop=True, img=None, console_texts=None, delay_ms=None))
         # Now wait for any processing to have finished (and the above item to be processed) - this avoids us closing
         # while the thread is still running. Timeout, just in case something goes wrong.
         is_set = self._closed.wait(timeout=timeout)
@@ -268,10 +275,12 @@ class OpenCVGUI:
 
 if __name__ == "__main__":
 
-    img = Img.new_bgr(size=ImgSize(w=1920, h=1080), col=Col.named.red)
-    with OpenCVGUI("main", min_console_ppn=0.1, padding_col=Col.named.green, console_col=Col.named.blue) as gui:
+    with OpenCVGUI("main", min_console_ppn=0.3, padding_col=Col.named.green, console_col=Col.named.blue) as gui:
         while True:
-            finished = gui.draw(img, delay_ms=0, text=f"{time.time()}")
+            img = Img.new_bgr(size=ImgSize(w=1920, h=1080), col=Col.random())
+            finished = gui.draw(
+                img, delay_ms=1, console_text=[ConsoleText(text=f"gy{time.time()}"), ConsoleText(text="hi")]
+            )
             if finished:
                 break
-            time.sleep(1)
+            time.sleep(0.1)

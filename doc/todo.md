@@ -5,6 +5,8 @@
 - Push to pypi
 - Build pipeline in github.
 - Flake8 config and generally nicer build stuff.
+- check out <https://github.com/bunkahle/PILasOPENCV> - might make opencv vs PIL easier.
+- check out <https://github.com/PySimpleGUI/PySimpleGUI/blob/master/DemoPrograms/Demo_OpenCV_Simple_GUI.py> for GUI.
 - Drawing:
   - Transparency?
   - Add shape drawing methods

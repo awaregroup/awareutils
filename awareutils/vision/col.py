@@ -1,4 +1,5 @@
 import hashlib
+import random
 from typing import Iterable, Tuple
 
 from loguru import logger
@@ -70,6 +71,10 @@ class Col:
 
         # Phew, done:
         return c
+
+    @classmethod
+    def random(cls):
+        return cls(r=random.randint(0, 255), g=random.randint(0, 255), b=random.randint(0, 255))
 
 
 def pick_col(s: str) -> Col:

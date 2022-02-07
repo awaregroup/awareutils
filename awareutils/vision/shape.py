@@ -34,6 +34,10 @@ class Shape(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def copy(self) -> "Shape":
+        pass
+
+    @abstractmethod
     def _project(self, isize: ImgSize):
         """
         Project - where you can assume the sizes are different.
@@ -128,6 +132,15 @@ class Pixel(Shape):
     @property
     def area(self) -> int:
         return 1
+
+    def copy(self) -> "Pixel":
+        return self.__class__(
+            x=self.x,
+            y=self.y,
+            clip=self._clip,
+            fix_numeric_type=self._fix_numeric_type,
+            isize=self.isize.copy(),
+        )
 
     def _project(self, isize: ImgSize) -> "Pixel":
         return Pixel(
@@ -231,6 +244,15 @@ class Rectangle(Shape):
     def area(self) -> int:
         return self.h * self.w
 
+    def copy(self) -> "Rectangle":
+        return self.__class__(
+            p0=self.p0.copy(),
+            p1=self.p1.copy(),
+            clip=self._clip,
+            fix_numeric_type=self._fix_numeric_type,
+            isize=self.isize.copy(),
+        )
+
     def slice_array(self, arr: np.ndarray) -> np.ndarray:
         # TODO: this assumes mono or color array and not e.g. stacks of colors
         # TODO: maybe allow users to slice without providing arr? It's only used for h/w checking so will work without
@@ -324,6 +346,14 @@ class PolyLine(Shape):
     def area(self) -> int:
         raise NotImplementedError("TODO")
 
+    def copy(self) -> "PolyLine":
+        return self.__class__(
+            pixels=[p.copy() for p in self.pixels],
+            clip=self._clip,
+            fix_numeric_type=self._fix_numeric_type,
+            isize=self.isize.copy(),
+        )
+
     def _project(self, isize: ImgSize) -> "PolyLine":
         return PolyLine(
             isize=isize,
@@ -354,6 +384,15 @@ class Line(PolyLine):
     @property
     def p1(self) -> Pixel:
         return self._pixels[1]
+
+    def copy(self) -> "Line":
+        return self.__class__(
+            p0=self.p0.copy(),
+            p1=self.p1.copy(),
+            clip=self._clip,
+            fix_numeric_type=self._fix_numeric_type,
+            isize=self.isize.copy(),
+        )
 
     def __repr__(self):
         return f"Line: {self.p0} -> {self.p1}"
@@ -432,6 +471,15 @@ class Circle(Shape):
     @property
     def area(self) -> int:
         return math.pi * self._radius ** 2
+
+    def copy(self) -> "Circle":
+        return self.__class__(
+            center=self.center.copy(),
+            radius=self.radius,
+            clip=self._clip,
+            fix_numeric_type=self._fix_numeric_type,
+            isize=self.isize.copy(),
+        )
 
     def _project(self, isize: ImgSize) -> "Circle":
         current_aspect_ratio = self._isize.w / self._isize.h

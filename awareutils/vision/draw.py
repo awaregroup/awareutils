@@ -1,4 +1,6 @@
 from abc import ABCMeta, abstractmethod
+from dataclasses import dataclass
+from functools import lru_cache
 
 import numpy as np
 from awareutils.vision.col import Col
@@ -19,6 +21,13 @@ except ImportError:
 
 def _none_or_rgb(col: Col):
     return None if col is None else col.rgb
+
+
+@dataclass
+class FontSize:
+    width: float
+    height: float
+    baseline: float
 
 
 class Drawer(metaclass=ABCMeta):
@@ -79,6 +88,20 @@ class Drawer(metaclass=ABCMeta):
 
     @abstractmethod
     def circle(self, circle: Circle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+        pass
+
+    @abstractmethod
+    def text(
+        self,
+        text: str,
+        origin: Pixel,
+        font: int = cv2.FONT_HERSHEY_SIMPLEX,
+        height: float = 0.01,
+        width: int = 1,
+        col: Col = Col.named.aware_blue_light,
+        line_type=cv2.LINE_AA,
+        bottom_left_is_origin: bool = False,
+    ) -> FontSize:
         pass
 
     def draw(self, shape: Shape, fill: Col = None, outline: Col = None, width: int = 1) -> None:
@@ -205,6 +228,41 @@ class OpenCVDrawer(Drawer):
         # Only outline if we need to:
         if outline is not None and (fill is None or outline != fill or width > 1):
             cv2.circle(self.img.source, center=center, radius=circle.radius, color=self._col(outline), thickness=width)
+
+    @lru_cache(maxsize=100)
+    def _calculate_font_scale(self, font: int, font_height: int, thickness: int):
+        return cv2.getFontScaleFromHeight(font, font_height, thickness)
+
+    def text(
+        self,
+        text: str,
+        origin: Pixel,
+        font: int = cv2.FONT_HERSHEY_SIMPLEX,
+        height: float = 0.01,
+        width: int = 1,
+        col: Col = Col.named.aware_blue_light,
+        line_type=cv2.LINE_AA,
+    ) -> FontSize:
+        self._contiguity_test()
+        # Figure out how high font needs to be:
+        font_pixel_height = int(round(max(1, self.img.h * height), 0))
+        font_scale = self._calculate_font_scale(font, font_pixel_height, width)
+        # Get the size:
+        (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, width)
+        size = FontSize(width=text_width, height=text_height, baseline=baseline)
+        # Draw it:
+        cv2.putText(
+            self.img.source,
+            text=text,
+            org=(origin.x, origin.y + size.height),  # Offset so origin is top left not bottom left:
+            fontFace=font,
+            fontScale=font_scale,
+            color=self._col(col),
+            thickness=width,
+            lineType=line_type,
+            bottomLeftOrigin=False,
+        )
+        return size
 
     def _col(self, col: Col):
         if col is None:

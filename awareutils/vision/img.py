@@ -51,6 +51,9 @@ class ImgSize:
         if w <= 1 or h <= 1:
             raise ValueError("img should be at least 1x1")
 
+    def copy(self) -> "ImgSize":
+        return self.__class__(h=self.h, w=self.w)
+
 
 # Uggh, circular imports. Other things e.g. shape want ImgSize, so let's give them that first above. Note that we could
 # define ImgSize in a different file which would also resolve the circular imports, but I reckon it's pretty tied to
