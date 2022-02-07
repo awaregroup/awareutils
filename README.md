@@ -49,7 +49,7 @@ You can see more about some of the design decisions in [./doc/decisions.md](./do
 - Invalid shape coordinates (e.g. outside image etc.). Check for this, and fix, etc.
 - Bounding box formats (x0y0x1y1, x0y0wh, xcycwh, etc.) - be explicit. Likewise `(w, h)` vs `(h, w)` - be explicit by forcing kwargs.
 - Annoyance setting up OpenCV windows fullscreen etc. Provide some utils.
-- Putting information on top of images with a GUI. This works, but often obscures the image, and you have to manually mess with offsets etc. Let's just have a "write all these lines to a 'console' on the GUI" option.
+- Overlaying text on top of images with `cv2.imshow` can be annoying and often obscures the image etc. Our default GUI fixes this by having a 'console' for information, separate to the image.
 
 ## Developing
 
