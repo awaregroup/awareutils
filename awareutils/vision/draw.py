@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
 from functools import lru_cache
+from typing import List
 
 import numpy as np
 from awareutils.vision.col import Col
@@ -21,13 +22,6 @@ except ImportError:
 
 def _none_or_rgb(col: Col):
     return None if col is None else col.rgb
-
-
-@dataclass
-class FontSize:
-    width: float
-    height: float
-    baseline: float
 
 
 class Drawer(metaclass=ABCMeta):
@@ -98,10 +92,11 @@ class Drawer(metaclass=ABCMeta):
         font: int = cv2.FONT_HERSHEY_SIMPLEX,
         height: float = 0.01,
         width: int = 1,
+        word_wrap_width: int = None,
         col: Col = Col.named.aware_blue_light,
         line_type=cv2.LINE_AA,
         bottom_left_is_origin: bool = False,
-    ) -> FontSize:
+    ) -> Rectangle:
         pass
 
     def draw(self, shape: Shape, fill: Col = None, outline: Col = None, width: int = 1) -> None:
@@ -162,6 +157,9 @@ class PILDrawer(Drawer):
             outline=_none_or_rgb(outline),
             width=width,
         )
+
+    def text(self, *args, **kwargs) -> Rectangle:
+        raise NotImplementedError("TODO")
 
 
 class OpenCVDrawer(Drawer):
@@ -233,36 +231,108 @@ class OpenCVDrawer(Drawer):
     def _calculate_font_scale(self, font: int, font_height: int, thickness: int):
         return cv2.getFontScaleFromHeight(font, font_height, thickness)
 
+    def _multiline_split(
+        self, text: str, font: int, font_scale: float, line_width: float, word_wrap_width: int
+    ) -> List[str]:
+        remaining = text.strip(" ").split(" ")
+        lines = []
+        while True:
+            if not remaining:
+                break
+            # Pop words as long as we can:
+            this_line = ""
+            while remaining:
+                new_word = remaining[0]
+                new_line = f"{this_line} {new_word}" if this_line else new_word
+                (text_width, _), _ = cv2.getTextSize(new_line, font, font_scale, line_width)
+                if text_width < word_wrap_width:
+                    this_line = new_line
+                    remaining = remaining[1:]
+                else:
+                    break
+            # OK, if we didn't add any words but there's still remaining, then this means the first word in remaining is
+            # too long, in which case we have to split it.
+            if remaining and not this_line:
+                next_word = remaining[0]
+                while next_word:
+                    new_letter = next_word[0]
+                    new_line = f"{this_line}{new_letter}"
+                    (text_width, _), _ = cv2.getTextSize(new_line, font, font_scale, line_width)
+                    if text_width < word_wrap_width:
+                        this_line = new_line
+                        next_word = next_word[1:]
+                    else:
+                        break
+                if not this_line:
+                    raise RuntimeError(
+                        "Hmmm ... you should only see this if your word_wrap_width is too small for a single letter ..."
+                    )
+                # Split the start off from the remaining:
+                remaining[0] = remaining[0][len(this_line) :]
+            # Done:
+            lines.append(this_line)
+        return lines
+
     def text(
         self,
         text: str,
         origin: Pixel,
-        font: int = cv2.FONT_HERSHEY_SIMPLEX,
+        font: int = cv2.FONT_HERSHEY_DUPLEX,
         height: float = 0.01,
         width: int = 1,
+        word_wrap_width: int = None,
         col: Col = Col.named.aware_blue_light,
         line_type=cv2.LINE_AA,
-    ) -> FontSize:
+    ) -> Rectangle:
         self._contiguity_test()
         # Figure out how high font needs to be:
         font_pixel_height = int(round(max(1, self.img.h * height), 0))
         font_scale = self._calculate_font_scale(font, font_pixel_height, width)
-        # Get the size:
-        (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, width)
-        size = FontSize(width=text_width, height=text_height, baseline=baseline)
-        # Draw it:
-        cv2.putText(
-            self.img.source,
-            text=text,
-            org=(origin.x, origin.y + size.height),  # Offset so origin is top left not bottom left:
-            fontFace=font,
-            fontScale=font_scale,
-            color=self._col(col),
-            thickness=width,
-            lineType=line_type,
-            bottomLeftOrigin=False,
-        )
-        return size
+        # Split if needed:
+        if word_wrap_width is None:
+            lines = [text]
+        else:
+            # OK, let's iteratively split it into sections of lines that'll fit:
+            lines = self._multiline_split(
+                text, font=font, font_scale=font_scale, line_width=width, word_wrap_width=word_wrap_width
+            )
+        # Split any on \n if needed:
+        split_lines = []
+        for line in lines:
+            for l in line.split("\n"):
+                split_lines.append(l.strip())
+
+        # Now draw:
+        cumulative_bbox = None
+        for line_text in split_lines:
+            # Get the size:
+            (text_width, text_height), baseline = cv2.getTextSize(line_text, font, font_scale, width)
+            bbox = Rectangle(
+                p0=Pixel(x=origin.x, y=origin.y, isize=self.img.isize),
+                p1=Pixel(x=origin.x + text_width, y=origin.y + text_height + baseline, isize=self.img.isize),
+            )
+            # Update the size:
+            if cumulative_bbox is None:
+                cumulative_bbox = bbox
+            else:
+                # Update width:
+                cumulative_bbox.p1.x = max(cumulative_bbox.p1.x, bbox.p1.x)
+                # And bump the height - include 10% padding
+                cumulative_bbox.p1.y += int(1.1 * bbox.h)
+            # Draw it:
+            cv2.putText(
+                self.img.source,
+                text=line_text,
+                org=(cumulative_bbox.x0, cumulative_bbox.y1),  # Use y1 as draws from the bottom
+                fontFace=font,
+                fontScale=font_scale,
+                color=self._col(col),
+                thickness=width,
+                lineType=line_type,
+                bottomLeftOrigin=False,
+            )
+        # Update size:
+        return cumulative_bbox
 
     def _col(self, col: Col):
         if col is None:

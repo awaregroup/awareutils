@@ -11,22 +11,17 @@
   - Transparency?
   - Add shape drawing methods
     - arrow? maybe a few other shapes.
-    - nicer text! add some cool fonts? Use size normalized to the height of the image, so we can use the same 'size' regardless of image size, and it'll look right on our screen (at fullscreen)
 - Ensure all open/close context managers don't get opened twice
 - Why are we having to write `-1` in the rectangle logic in opencv GUI? I don't want the user (me in this case) worrying about that.
 - OpenCV:
-  - Sliders on GUI?
   - All thready things - ensure the queue doesn't get too big. Log if it's growing. Deque to max it?
   - Automatically search USB devices if you don't know which number (as it's a bit weird) ...
   - Automatically search supported fourcc in videowriter (or does -1 do that?). At least find some good fourcc defaults.
   - A dynamic FPS video writer? Not sure if it's possible, but if we change the FPS we're writing, how do we tell the video the FPS has changed? <https://github.com/iizukanao/picam> talks of VFR but doesn't seem like it's supported in opencv etc. Or see here <https://forums.raspberrypi.com/viewtopic.php?t=98541> - maybe just save the pts/timecodes (raspberry pi is easy, less sure about opencv etc., but I guess we could do it in our `write` method and hope linux clocks are OK and nothing's blocking!) and then use a tool like `mkvmerge` to create a new VFR video. (Note that reading that back in with opencv won't work, I suspect, as we just get the next frame, and not the pts etc. I guess we could also preprocess with something like ffmpeg to extract the vfr timecodes, and load them in parallel from opencv and do the necessary delays etc.) See <https://github.com/kkroening/ffmpeg-python/issues/246>
   - Maybe check out ffmpeg-python? Compare performance etc.
-  - A nicer display GUI that
-    - Does nice window creation inc. aspect ratio preservation (i.e. pad with black)
-    - Maybe have a "notes" functionality where you can see info somewhere instead of drawn over the image itself? E.g. in the padded black area above.
-    - Nicer waitkey etc.
-    - Nicer mouser handlers.
-    - Possibly some default features like zooming (trigger with 'z' and use selectROI to zoom in), or 's' to save the image, or maybe some nice way to say "just record this whole window to a video here please".
+  - GUI:
+    - Trackbars. Test mouse callback. Add mouse wheel callback.
+    - Have default mouse + wheel callback do zooming? Or maybe some default features like zooming (trigger with 'z' and use selectROI to zoom in), or 's' to save the image, or maybe some nice way to say "just record this whole window to a video here please".
 - Add fast video seeking to FileCapture.
 - Shape:
   - `shape.bounding_box` method

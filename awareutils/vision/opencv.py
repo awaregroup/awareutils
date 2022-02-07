@@ -17,8 +17,8 @@ from loguru import logger
 @dataclass
 class ConsoleText:
     text: str
-    font_height: float = 0.02
-    col: Col = Col.named.aware_blue_light
+    font_height: float = 0.015
+    col: Col = Col.named.white
 
 
 @dataclass
@@ -44,6 +44,7 @@ class OpenCVGUI:
         keyboard_callback: Callable = None,
         mouse_callback: Callable = None,
         min_console_ppn: float = 0,
+        console_font: int = cv2.FONT_HERSHEY_PLAIN,
         console_col: Col = Col.named.black,
         padding_col: Col = Col.named.black,
     ):
@@ -59,6 +60,7 @@ class OpenCVGUI:
         self._window_setup = False
         self._min_console_ppn = min_console_ppn
         self._console_col = console_col
+        self._console_font = console_font
         self._padding_col = padding_col
         self._out: Img = None
         self._out_img_rect: Rectangle = None
@@ -69,9 +71,8 @@ class OpenCVGUI:
         self._closed = threading.Event()
 
     def _setup_window(self, img_size: ImgSize):
-        # TODO: all non fullscreen
+        # TODO: allow non fullscreen
         # The "right" way to do fullscreen windows:
-        # TODO: add padding for fullscreen so aspect ratio isn't munted
         cv2.namedWindow(self._window_name, cv2.WINDOW_NORMAL)
         cv2.setWindowProperty(self._window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         cv2.moveWindow(self._window_name, 0, 0)
@@ -186,11 +187,16 @@ class OpenCVGUI:
             console_line_top_left = self._out_console_rect.p0.copy()
             console_line_top_left.y += 2
             for ct in console_texts:
-                font_size = self._out.draw.text(
-                    text=ct.text, height=ct.font_height, col=ct.col, origin=console_line_top_left
+                text_bbox = self._out.draw.text(
+                    text=f">> {ct.text}",
+                    font=self._console_font,
+                    height=ct.font_height,
+                    col=ct.col,
+                    origin=console_line_top_left,
+                    word_wrap_width=self._out_console_rect.w,
                 )
                 # Add height to get next position, but 10% of text height for spacing
-                console_line_top_left.y += int(1.1 * (font_size.height + font_size.baseline))
+                console_line_top_left.y += int(1.1 * text_bbox.h)
                 # TODO: check if o.y > img height i.e. too much text
 
         cv2.imshow(self._window_name, self._out.bgr())
@@ -274,13 +280,27 @@ class OpenCVGUI:
 
 
 if __name__ == "__main__":
+    import sys
 
-    with OpenCVGUI("main", min_console_ppn=0.3, padding_col=Col.named.green, console_col=Col.named.blue) as gui:
-        while True:
-            img = Img.new_bgr(size=ImgSize(w=1920, h=1080), col=Col.random())
+    logger.enable("awareutils")
+    with OpenCVGUI(
+        "main",
+        min_console_ppn=0.3,
+        padding_col=Col(30, 30, 30),
+        console_col=Col.named.black,
+        console_font=cv2.FONT_HERSHEY_DUPLEX,
+    ) as gui:
+        finished = False
+        while not finished:
+            img = Img.from_bgr(np.random.randint(low=0, high=255, size=(1080, 1920, 3), dtype=np.uint8))
             finished = gui.draw(
-                img, delay_ms=1, console_text=[ConsoleText(text=f"gy{time.time()}"), ConsoleText(text="hi")]
+                img,
+                delay_ms=1,
+                console_text=[
+                    ConsoleText(text="the quick brown fox 0123456789"),
+                    ConsoleText(text=f"{time.time()}"),
+                    ConsoleText(text="look\n^newline character!"),
+                    ConsoleText(text="look this line is really long so it'll automatically be word wrapped!"),
+                ],
             )
-            if finished:
-                break
             time.sleep(0.1)

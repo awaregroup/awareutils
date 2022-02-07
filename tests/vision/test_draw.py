@@ -34,8 +34,12 @@ def test_draw_pixel(itype: ImgType):
     assert np.array_equal(rgb[10, 10, :], COL.rgb)
 
 
-def _compared_to_saved(img: Img, name: str, differ: bool, save: bool = False):
-    if differ:
+def _compared_to_saved(img: Img, name: str, separate_pil_and_cv: bool, save: bool = False):
+    """
+    If you're creating a new image comparison test, set save=True, review the .save.png file, and if you like it,
+    rename to .png and set save=False. Add to git, and now it'll be saved as a test.
+    """
+    if separate_pil_and_cv:
         drawtype = "pil" if img.itype == ImgType.PIL else "cv"
         expected = DRAW_DIR / f"{name}_{drawtype}.png"
     else:
@@ -59,21 +63,21 @@ def test_draw_line(itype: ImgType):
 def test_draw_line_thick(itype: ImgType):
     img = Img.new(ISIZE, itype)
     img.draw.draw(LINE, outline=COL, width=2)
-    _compared_to_saved(img, "line_thick", differ=True)
+    _compared_to_saved(img, "line_thick", separate_pil_and_cv=True)
 
 
 @pytest.mark.parametrize("itype", (ImgType.PIL, ImgType.BGR, ImgType.RGB))
 def test_draw_polyline(itype: ImgType):
     img = Img.new(ISIZE, itype)
     img.draw.draw(POLYLINE, outline=COL)
-    _compared_to_saved(img, "polyline", differ=False)
+    _compared_to_saved(img, "polyline", separate_pil_and_cv=False)
 
 
 @pytest.mark.parametrize("itype", (ImgType.PIL, ImgType.BGR, ImgType.RGB))
 def test_draw_polyline_thick(itype: ImgType):
     img = Img.new(ISIZE, itype)
     img.draw.draw(POLYLINE, outline=COL, width=2)
-    _compared_to_saved(img, "polyline_thick", differ=True)
+    _compared_to_saved(img, "polyline_thick", separate_pil_and_cv=True)
 
 
 @pytest.mark.parametrize("itype", (ImgType.PIL, ImgType.BGR, ImgType.RGB))
@@ -98,53 +102,66 @@ def test_draw_rectangle_outlined(itype: ImgType):
 def test_draw_rectangle_outlined_thick(itype: ImgType):
     img = Img.new(ISIZE, itype)
     img.draw.draw(RECT, outline=COL, width=2)
-    _compared_to_saved(img, "rectangle_outline_thick", differ=True)
+    _compared_to_saved(img, "rectangle_outline_thick", separate_pil_and_cv=True)
 
 
 @pytest.mark.parametrize("itype", (ImgType.PIL, ImgType.BGR, ImgType.RGB))
 def test_draw_rectangle_filled_outlined_thick(itype: ImgType):
     img = Img.new(ISIZE, itype)
     img.draw.draw(RECT, outline=COL, width=2, fill=COL2)
-    _compared_to_saved(img, "rectangle_filled_outline_thick", differ=True)
+    _compared_to_saved(img, "rectangle_filled_outline_thick", separate_pil_and_cv=True)
 
 
 @pytest.mark.parametrize("itype", (ImgType.PIL, ImgType.BGR, ImgType.RGB))
 def test_draw_circle_outlined(itype: ImgType):
     img = Img.new(ISIZE, itype)
     img.draw.circle(CIRCLE, outline=COL, width=1)
-    _compared_to_saved(img, "circle_outline", differ=True)
+    _compared_to_saved(img, "circle_outline", separate_pil_and_cv=True)
 
 
 @pytest.mark.parametrize("itype", (ImgType.PIL, ImgType.BGR, ImgType.RGB))
 def test_draw_circle_outlined_thick(itype: ImgType):
     img = Img.new(ISIZE, itype)
     img.draw.draw(CIRCLE, outline=COL, width=2)
-    _compared_to_saved(img, "circle_outline_thick", differ=True)
+    _compared_to_saved(img, "circle_outline_thick", separate_pil_and_cv=True)
 
 
 @pytest.mark.parametrize("itype", (ImgType.PIL, ImgType.BGR, ImgType.RGB))
 def test_draw_circle_filled_outlined_thick(itype: ImgType):
     img = Img.new(ISIZE, itype)
     img.draw.draw(CIRCLE, outline=COL, width=2, fill=COL2)
-    _compared_to_saved(img, "circle_filled_outline_thick", differ=True)
+    _compared_to_saved(img, "circle_filled_outline_thick", separate_pil_and_cv=True)
 
 
 @pytest.mark.parametrize("itype", (ImgType.PIL, ImgType.BGR, ImgType.RGB))
 def test_draw_polygon_outlined(itype: ImgType):
     img = Img.new(ISIZE, itype)
     img.draw.polygon(POLYGON, outline=COL, width=1)
-    _compared_to_saved(img, "polygon_outline", differ=False)
+    _compared_to_saved(img, "polygon_outline", separate_pil_and_cv=False)
 
 
 @pytest.mark.parametrize("itype", (ImgType.PIL, ImgType.BGR, ImgType.RGB))
 def test_draw_polygon_outlined_thick(itype: ImgType):
     img = Img.new(ISIZE, itype)
     img.draw.draw(POLYGON, outline=COL, width=2)
-    _compared_to_saved(img, "polygon_outline_thick", differ=True)
+    _compared_to_saved(img, "polygon_outline_thick", separate_pil_and_cv=True)
 
 
 @pytest.mark.parametrize("itype", (ImgType.PIL, ImgType.BGR, ImgType.RGB))
 def test_draw_polygon_filled_outlined_thick(itype: ImgType):
     img = Img.new(ISIZE, itype)
     img.draw.draw(POLYGON, outline=COL, width=2, fill=COL2)
-    _compared_to_saved(img, "polygon_filled_outline_thick", differ=True)
+    _compared_to_saved(img, "polygon_filled_outline_thick", separate_pil_and_cv=True)
+
+
+@xfail
+def test_text_pil():
+    img = Img.new(ISIZE, ImgType.PIL)
+    img.draw.text(text="testing")
+
+
+@pytest.mark.parametrize("itype", (ImgType.BGR, ImgType.RGB))
+def test_text_cv(itype: ImgType):
+    img = Img.new(ISIZE, itype)
+    img.draw.text(text="a", height=0.5, origin=PIXEL, col=COL)
+    _compared_to_saved(img, "text", separate_pil_and_cv=True, save=False)
