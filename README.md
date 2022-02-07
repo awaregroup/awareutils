@@ -49,7 +49,6 @@ You can see more about some of the design decisions in [./doc/decisions.md](./do
 - Invalid shape coordinates (e.g. outside image etc.). Check for this, and fix, etc.
 - Bounding box formats (x0y0x1y1, x0y0wh, xcycwh, etc.) - be explicit. Likewise `(w, h)` vs `(h, w)` - be explicit by forcing kwargs.
 - Annoyance setting up OpenCV windows fullscreen etc. Provide some utils.
-- Threading. It's the way to do things faster, but it's hard to do it right with the right features. Especially with OpenCV which is a bit fragile.
 - Putting information on top of images with a GUI. This works, but often obscures the image, and you have to manually mess with offsets etc. Let's just have a "write all these lines to a 'console' on the GUI" option.
 
 ## Developing
