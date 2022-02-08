@@ -1,5 +1,8 @@
 from awareutils.vision.img import Img, ImgSize, ImgType
 from awareutils.vision.video import ThreadedOpenCVFileVideoCapture, ThreadedOpenCVVideoWriter
+from loguru import logger
+
+logger.enable("awareutils")
 
 
 def test_file_writer_and_reader(tmp_path):
@@ -10,7 +13,7 @@ def test_file_writer_and_reader(tmp_path):
             vo.write(img)
     with ThreadedOpenCVFileVideoCapture(path=fpath) as vi:
         frames = []
-        for frame in vi.read():
+        for frame in vi.read(timeout=0.5):
             frames.append(frame)
             if len(frames) == 2:
                 assert isinstance(vi.read_fps().last_frame_fps, float)

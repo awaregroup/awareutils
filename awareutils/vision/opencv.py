@@ -3,11 +3,11 @@ import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from queue import Queue
-from tkinter import W
-from typing import Callable, List, Tuple, Union
+from typing import Callable, List, Union
 
 import cv2
 import numpy as np
+from awareutils.vision._threading import Threadable
 from awareutils.vision.col import Col
 from awareutils.vision.img import Img, ImgSize
 from awareutils.vision.shape import Pixel, Rectangle
@@ -37,7 +37,7 @@ def default_keyboard_callback(key: int) -> bool:
     return False
 
 
-class OpenCVGUI:
+class OpenCVGUI(Threadable):
     def __init__(
         self,
         window_name: str = None,
@@ -54,6 +54,8 @@ class OpenCVGUI:
         (instead of padding top and bottom) ... with a minimum size of min_console_ppn of the height. Likewise if the
         image is too high, we pad on the sides, etc.
         """
+        super().__init__()
+
         self._window_name = window_name
         self._mouse_callback = mouse_callback
         self._keyboard_callback = default_keyboard_callback if keyboard_callback is None else keyboard_callback
@@ -66,9 +68,6 @@ class OpenCVGUI:
         self._out_img_rect: Rectangle = None
         self._out_console_rect: Rectangle = None
         self._q = Queue()
-        self._running = False
-        self._thread = None
-        self._closed = threading.Event()
 
     def _setup_window(self, img_size: ImgSize):
         # TODO: allow non fullscreen
@@ -208,79 +207,52 @@ class OpenCVGUI:
         return False
 
     def _run(self):
-        self._running = True
-        try:
-            first = True
-            setup = False
-            while self._running:
-                task: _DrawTask = self._q.get()
-                # TODO: errors if q is getting too long
+        first = True
+        setup = False
+        while True:  # Note: This isn't interruptible as we clear with a task
+            task: _DrawTask = self._q.get()
+            # TODO: errors if q is getting too long
 
-                # Setup on first run (don't do it before, as sometimes there can be a big delay before first frame comes
-                # which means you've got an empty screen for a while)
-                if first:
-                    self._setup_window(task.img.isize)
-                    first = False
-                    setup = True
+            # Setup on first run (don't do it before, as sometimes there can be a big delay before first frame comes
+            # which means you've got an empty screen for a while)
+            if first:
+                self._setup_window(task.img.isize)
+                first = False
+                setup = True
 
-                # Stop or draw:
-                finish = False
-                if not task.stop:
-                    finish = self._threaded_draw(task)
-                if task.stop or finish:
-                    if setup:
-                        cv2.destroyWindow(self._window_name)
-                    break
-        except:  # NOQA
-            logger.exception("Failed while drawing!")
-
-        self._running = False
-        self._closed.set()
+            # Stop or draw:
+            finish = False
+            if not task.stop:
+                finish = self._threaded_draw(task)
+            if task.stop or finish:
+                if setup:
+                    cv2.destroyWindow(self._window_name)
+                break
 
     def draw(self, img: Img, delay_ms: float = 0, console_text: Union[str, List[str]] = None) -> bool:
         """
         Return true if GUI is closed (because of error or keyboard interaction).
         """
-        if self._closed.is_set():
+        if self._thread_finished.is_set():
             return True
         console_text = console_text if isinstance(console_text, Iterable) else [console_text]
         task = _DrawTask(stop=False, img=img, delay_ms=delay_ms, console_texts=console_text)
         self._q.put(task)
         return False
 
-    def open(self):
-        logger.info("Starting OpenCVGUI")
-        self._thread = threading.Thread(target=self._run, args=())
-        self._thread.daemon = True
-        self._thread.start()
-
-    def close(self, timeout: float = None):
+    def _close_immediately(self):
         # Clear the queue - don't show what's in the queue, assume the user wants it stopped now now:
         self._q.empty()
         # Add a 'stop' item to the queue - this is our way of telling the _run function to stop processing. (It's a bit
         # of a hack for now to stop the _run method hanging on self._q.get(). TODO make this nicer = ) )
         self._q.put(_DrawTask(stop=True, img=None, console_texts=None, delay_ms=None))
-        # Now wait for any processing to have finished (and the above item to be processed) - this avoids us closing
-        # while the thread is still running. Timeout, just in case something goes wrong.
-        is_set = self._closed.wait(timeout=timeout)
-        if not is_set:
-            raise RuntimeError(f"Didn't close within {timeout} seconds!")
+        # Note that our parent Threadable will block until this main thread has finished
 
-    def is_alive(self) -> bool:
-        if self._thread is None:
-            raise RuntimeError("Thread isn't initialized!")
-        return self._thread.is_alive()
-
-    def __enter__(self):
-        self.open()
-        return self
-
-    def __exit__(self, *args, **kwargs):
-        self.close()
+    def _close_after_thread_finished(self) -> None:
+        pass
 
 
 if __name__ == "__main__":
-    import sys
 
     logger.enable("awareutils")
     with OpenCVGUI(

@@ -8,6 +8,7 @@ from pathlib import Path
 from queue import Queue
 from typing import Any, Iterator, Union
 
+from awareutils.vision._threading import Threadable
 from awareutils.vision.img import Img
 from loguru import logger
 
@@ -40,7 +41,7 @@ class FPS:
         elif self.last_frame_duration_ms == 0:
             return float("Inf")
         else:
-            return 1 / self.last_frame_duration_ms
+            return 1 / self.last_frame_duration_ms * 1000
 
     @property
     def smoothed_fps(self) -> float:
@@ -49,13 +50,12 @@ class FPS:
         elif self.smoothed_duration_ms == 0:
             return float("Inf")
         else:
-            return 1 / self.smoothed_duration_ms
+            return 1 / self.smoothed_duration_ms * 1000
 
 
 def _calculate_fps(times) -> FPS:
     last_duration_ms = None
     smoothed_duration_ms = None
-    # print(times)
     if len(times) >= 2:
         last_duration_ms = (times[-1] - times[-2]) * 1000
         smoothed_duration_ms = (times[-1] - times[0]) / (len(times) - 1) * 1000
@@ -97,18 +97,16 @@ class VideoCapture(metaclass=ABCMeta):
         self.close()
 
 
-class ModularThreadedVideoCapture(VideoCapture, metaclass=ABCMeta):
+class ThreadedVideoCapture(Threadable, VideoCapture, metaclass=ABCMeta):
     def __init__(self, non_skipping: bool, finite: bool, simulated_read_fps: float = None, *args, **kwargs):
         # TODO: check types or args
         super().__init__(*args, **kwargs)
         self._non_skipping = non_skipping
         self._finite = finite
         self._simulated_read_fps = simulated_read_fps
-
         self._current_img = None
+        self._fidx = None
         self._running = False
-        self._thread = None
-        self._fidx = -1
         self._capture_open_event = threading.Event()
         self._first_frame_event = threading.Event()
         self._new_frame_or_no_more_frames_event = threading.Event()
@@ -145,30 +143,18 @@ class ModularThreadedVideoCapture(VideoCapture, metaclass=ABCMeta):
     def _get_width(self) -> int:
         pass
 
-    def _start(self):
-        logger.info("Starting camera")
-        self._thread = threading.Thread(target=self._run, args=())
-        self._thread.daemon = True
-        self._thread.start()
+    def _close_immediately(self) -> None:
+        self._running = False
 
-    def open(self):
-        self._start()
-
-    def close(self):
-        self._stop()
+    def _close_after_thread_finished(self) -> None:
         self._read_times.clear()
         self._yield_times.clear()
         self._fidx = None
         self._current_img = None
 
-    def is_alive(self) -> bool:
-        if self._thread is None:
-            raise RuntimeError("Thread isn't initialized!")
-        return self._thread.is_alive()
-
     def _run(self):
-        self._running = True
         # With OpenCV, everything has to happen in one thread, so we need to open, read, and close, all in this loop.
+        self._running = True
         logger.info("Trying to open camera")
         try:
             self._open_capture()
@@ -180,6 +166,7 @@ class ModularThreadedVideoCapture(VideoCapture, metaclass=ABCMeta):
 
         self._frame_yielded_event.set()
         last_new_frame_triggered = None
+        self._fidx = -1
         while self._running:
             try:
                 img = self._read_frame()
@@ -222,17 +209,8 @@ class ModularThreadedVideoCapture(VideoCapture, metaclass=ABCMeta):
                 break
 
         # Close here in thread
-        self._close_capture()
-        self._stop()
-
-    def _stop(self):
         self._running = False
-
-    @staticmethod
-    def _block_until(event, timeout=None):
-        is_set = event.wait(timeout=timeout)
-        if not is_set:
-            raise ValueError(f"Couldn't get event within {timeout} seconds!")
+        self._close_capture()
 
     @property
     def height(self):
@@ -284,7 +262,7 @@ class ModularThreadedVideoCapture(VideoCapture, metaclass=ABCMeta):
         return _calculate_fps(self._yield_times)
 
 
-class ThreadedOpenCVLiveVideoCapture(ModularThreadedVideoCapture):
+class ThreadedOpenCVLiveVideoCapture(ThreadedVideoCapture):
     def __init__(self, device: Any, height: int = None, width: int = None, fps: int = None, api: int = None):
         super().__init__(finite=False, non_skipping=False, simulated_read_fps=False)
         # TODO: check they're the right types
@@ -363,7 +341,7 @@ class ThreadedOpenCVLiveVideoCapture(ModularThreadedVideoCapture):
             self._vi.release()
 
 
-class ThreadedOpenCVFileVideoCapture(ModularThreadedVideoCapture):
+class ThreadedOpenCVFileVideoCapture(ThreadedVideoCapture):
     def __init__(self, path: Union[Path, str], simulated_read_fps: int = None):
         # TODO: check types or args
         if simulated_read_fps is None:
@@ -425,7 +403,7 @@ class VideoWriter(metaclass=ABCMeta):
         self.close()
 
 
-class ThreadedVideoWriter(VideoWriter, metaclass=ABCMeta):
+class ThreadedVideoWriter(Threadable, VideoWriter, metaclass=ABCMeta):
     """
     Class that writes video in a separate thread. The main change here is that we ensure we don't close while we're in
     the middle of writing.
@@ -437,17 +415,8 @@ class ThreadedVideoWriter(VideoWriter, metaclass=ABCMeta):
     def __init__(self):
         super().__init__()
         self._q = Queue()
-        self._closed: threading.Event = None
         self._write_times = collections.deque([], maxlen=10)
         self._running = False
-
-    def open(self):
-        logger.info("Starting writer")
-        self._closed = threading.Event()
-        t = threading.Thread(target=self._run, args=())
-        t.daemon = True
-        t.start()
-        return t
 
     @abstractmethod
     def _open_in_thread(self, *args, **kwargs):
@@ -466,7 +435,7 @@ class ThreadedVideoWriter(VideoWriter, metaclass=ABCMeta):
         self._running = True
         try:
             self._open_in_thread()
-            while self._running:
+            while self._running:  # Note - this isn't interruptible as we clear with a task
                 stop, img = self._q.get()
                 # TODO: errors if q is getting too long
                 if stop:
@@ -476,27 +445,25 @@ class ThreadedVideoWriter(VideoWriter, metaclass=ABCMeta):
                     self._write_times.append(time.time())
         except:  # NOQA
             logger.exception("Failed while writing!")
-        self._running = False
+            self._running = False
         self._close_in_thread()
-        self._closed.set()
 
     @abstractmethod
     def _close_in_thread(self, *args, **kwargs):
         pass
 
-    def close(self, timeout=None):
+    def _close_immediately(self):
         # TODO: do we empty the queue?
         # Add a 'stop' item to the queue - this is our way of telling the _run function to stop processing. (It's a bit
         # of a hack for now to stop the _run method hanging on self._q.get(). TODO make this nicer = ) ) Note that this
         # has the side effect of clearing out the queue before we close (as we're putting on the end)
         self._q.put((True, None))
-        # Now wait for any processing to have finished (and the above item to be processed) - this avoids us closing
-        # while the thread is still running. Timeout, just in case something goes wrong.
-        is_set = self._closed.wait(timeout=timeout)
-        if not is_set:
-            raise RuntimeError(f"Didn't close within {timeout} seconds!")
+        # Note that our parent Threadable will block until this main thread has finished
 
     # TODO: add the requested write FPS?
+
+    def _close_after_thread_finished(self) -> None:
+        pass
 
     def write_fps(self) -> FPS:
         return _calculate_fps(self._write_times)
