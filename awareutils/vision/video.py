@@ -76,6 +76,10 @@ class VideoCapture(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def current_frame(self, *args, **kwargs):
+        pass
+
+    @abstractmethod
     def read(self, *args, **kwargs):
         pass
 
@@ -221,6 +225,11 @@ class ThreadedVideoCapture(Threadable, VideoCapture, metaclass=ABCMeta):
     def width(self):
         self._block_until(self._capture_open_event, timeout=5)
         return self._get_width()
+
+    def current_frame(self, timeout: int = 5) -> CameraFrame:
+        self._block_until(self._first_frame_event, timeout=timeout)
+        fidx, img = self._fidx, self._current_img
+        return CameraFrame(fidx=fidx, img=img)
 
     def read(self, timeout: int = 5) -> Iterator[CameraFrame]:
         self._block_until(self._first_frame_event, timeout=timeout)
