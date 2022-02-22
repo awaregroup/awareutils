@@ -165,7 +165,6 @@ class ThreadedVideoCapture(Threadable, VideoCapture, metaclass=ABCMeta):
             self._capture_open_event.set()
         except:  # NOQA
             logger.exception("Failed to open camera!")
-            self._stop()
             self._running = False
 
         self._frame_yielded_event.set()
