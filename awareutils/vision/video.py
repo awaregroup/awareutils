@@ -490,6 +490,12 @@ class ThreadedOpenCVVideoWriter(ThreadedVideoWriter):
         self.fps = fps
         self._vo = None
 
+    def write(self, img: Img):
+        if img.isize.h != self.height or img.isize.w != self.width:
+            # TODO: allow resizing?
+            raise RuntimeError("img size doesn't match that of video!")
+        return super().write(img)
+
     def _open_in_thread(self, *args, **kwargs):
         self._vo = cv2.VideoWriter(self.path, cv2.VideoWriter_fourcc(*"XVID"), self.fps, (self.width, self.height))
         if not self._vo.isOpened():

@@ -50,6 +50,7 @@ You can see more about some of the design decisions in [./doc/decisions.md](./do
 - Bounding box formats (x0y0x1y1, x0y0wh, xcycwh, etc.) - be explicit. Likewise `(w, h)` vs `(h, w)` - be explicit by forcing kwargs.
 - Annoyance setting up OpenCV windows fullscreen etc. Provide some utils.
 - Overlaying text on top of images with `cv2.imshow` can be annoying and often obscures the image etc. Our default GUI fixes this by having a 'console' for information, separate to the image.
+- Writing an image to a `VideoWriter` silently fails if the dimensions don't match. That's annoying to debug.
 
 ## Developing
 
