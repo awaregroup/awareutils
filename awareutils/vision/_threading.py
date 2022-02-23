@@ -13,6 +13,7 @@ class Threadable(metaclass=ABCMeta):
         self._thread = None
         self._thread_finished = threading.Event()
         self._opened = False
+        self._closed = False
 
     def open(self) -> None:
         if self._opened:
@@ -37,6 +38,7 @@ class Threadable(metaclass=ABCMeta):
         if not is_set:
             raise RuntimeError(f"Didn't close within {timeout} seconds!")
         self._close_after_thread_finished()
+        self._closed = True
 
     @abstractmethod
     def _run(self) -> None:

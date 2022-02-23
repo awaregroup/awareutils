@@ -227,6 +227,8 @@ class ThreadedVideoCapture(Threadable, VideoCapture, metaclass=ABCMeta):
 
     def current_frame(self, timeout: int = 5) -> CameraFrame:
         self._block_until(self._first_frame_event, timeout=timeout)
+        if not self._running or self._no_more_frames or self._closed:
+            raise RuntimeError("Camera is closed or not running or has no more frames")
         fidx, img = self._fidx, self._current_img
         return CameraFrame(fidx=fidx, img=img)
 
