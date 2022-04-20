@@ -1,6 +1,7 @@
 # TODO
 
 - Tests!
+- Allow drawing in normalized coordinates? That'd be useful ...
 - Add a pi camera class
 - Push to pypi
 - Build pipeline in github.

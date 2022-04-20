@@ -149,6 +149,11 @@ class ThreadedVideoCapture(Threadable, VideoCapture, metaclass=ABCMeta):
 
     def _close_immediately(self) -> None:
         self._running = False
+        # Set the below to true so we don't get stuck blocking on it (which then means the run loop never finishes, and
+        # hence we can't close nicely).
+        # TODO: it'd be nice to make self._running an event somehow, so that our block_until(self._frame_yielded_event)
+        # will block until either _frame_yielded_event OR _running is false.
+        self._frame_yielded_event.set()
 
     def _close_after_thread_finished(self) -> None:
         self._read_times.clear()

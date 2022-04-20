@@ -33,7 +33,15 @@ class Threadable(metaclass=ABCMeta):
         pass
 
     def close(self, timeout: float = None) -> None:
+        # Do any immediate closing stuff:
         self._close_immediately()
+        # Then wait for the thread to finish cleanly. We need to do this for OpenCV because to e.g. close a video writer
+        # it needs to be done in the thread it was opened in i.e. the run. The main trick here is if we want to close
+        # immediately (e.g. an error propagating from outside the thread, and a context manager capturing it so trying
+        # to close) we don't want to get stuck here hanging for _thread_finished ... which will never set unless run()
+        # finished or errors (which may not happen). For now, we just assume that _close_immediately will cause _run to
+        # stop, and hence self._thread_finished gets set in self.run() ...
+        # TODO: don't assume this = )
         is_set = self._thread_finished.wait(timeout=timeout)
         if not is_set:
             raise RuntimeError(f"Didn't close within {timeout} seconds!")
