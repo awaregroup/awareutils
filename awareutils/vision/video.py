@@ -399,23 +399,8 @@ class VideoWriter(metaclass=ABCMeta):
     """
 
     @abstractmethod
-    def open(self):
-        pass
-
-    @abstractmethod
-    def close(self, *args, **kwargs):
-        pass
-
-    @abstractmethod
     def write(self, img: Img):
         pass
-
-    def __enter__(self):
-        self.open()
-        return self
-
-    def __exit__(self, *args, **kwargs):
-        self.close()
 
 
 class ThreadedVideoWriter(Threadable, VideoWriter, metaclass=ABCMeta):

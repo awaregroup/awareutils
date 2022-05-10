@@ -12,7 +12,7 @@ A collection of Python utilities used within Aware Group. Generally computer vis
 
 ```sh
 git clone https://github.com/awaregroup/awareutils
-pip install awareutils[all]
+pip install ./awareutils[all]
 ```
 
 The above installs everything including e.g. `OpenCV` and `Pillow`. If you know you're only going to work with `OpenCV` then this library supports that - in this case you'd `pip install awareutils[cv2]`. See `extras-requirements.txt` for a breakdown.
