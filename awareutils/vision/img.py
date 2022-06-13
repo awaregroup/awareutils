@@ -30,6 +30,8 @@ class ImgType(Enum):
 
 
 class ImgSize:
+    named: "NamedImgSizes"
+
     def __init__(self, *, h: int, w: int):
         self._validate_img_shape(w=w, h=h)
         self.w = w
@@ -44,6 +46,10 @@ class ImgSize:
     def __repr__(self) -> str:
         return f"ImgSize(h={self.h}, w={self.w})"
 
+    @property
+    def aspect_ratio(self):
+        return self.w / self.h
+
     @staticmethod
     def _validate_img_shape(*, w: int, h: int):
         if not isinstance(w, int) or not isinstance(h, int):
@@ -54,6 +60,16 @@ class ImgSize:
     def copy(self) -> "ImgSize":
         return self.__class__(h=self.h, w=self.w)
 
+
+class NamedImgSizes:
+    _480p = ImgSize(h=480, w=720)
+    _720p = ImgSize(h=720, w=1280)
+    _1080p = ImgSize(h=1080, w=1920)
+    _4k = ImgSize(h=2160, w=3840)
+    _8k = ImgSize(h=4320, w=7680)
+
+
+ImgSize.named = NamedImgSizes()
 
 # Uggh, circular imports. Other things e.g. shape want ImgSize, so let's give them that first above. Note that we could
 # define ImgSize in a different file which would also resolve the circular imports, but I reckon it's pretty tied to
@@ -346,6 +362,14 @@ class Img:
     @property
     def draw(self) -> Union["Drawer"]:
         raise NotImplementedError("You shouldn't be seeing this ... it should be overridden")
+
+    def copy(self) -> "Img":
+        return Img(
+            source=self.source.copy(),
+            itype=self.itype,
+            metadata=self.metadata,
+            make_arrays_contiguous=self.make_arrays_contiguous,
+        )
 
 
 # Ewwww, getting around circular imports ...

@@ -6,9 +6,9 @@ from abc import ABCMeta, abstractmethod, abstractproperty
 from dataclasses import dataclass
 from pathlib import Path
 from queue import Queue
-from typing import Any, Iterator, Union
+from typing import Any, Iterator, List, Union
 
-from awareutils.vision._threading import Threadable
+from awareutils.vision._threading import ProcessHeavyTaskInBackground
 from awareutils.vision.img import Img
 from loguru import logger
 
@@ -53,7 +53,7 @@ class FPS:
             return 1 / self.smoothed_duration_ms * 1000
 
 
-def _calculate_fps(times) -> FPS:
+def _calculate_fps(times: List[float]) -> FPS:
     last_duration_ms = None
     smoothed_duration_ms = None
     if len(times) >= 2:
@@ -66,18 +66,6 @@ class VideoCapture(metaclass=ABCMeta):
     """
     Class that reads a generic camera in a separate thread.
     """
-
-    @abstractmethod
-    def open(self):
-        pass
-
-    @abstractmethod
-    def close(self, *args, **kwargs):
-        pass
-
-    @abstractmethod
-    def current_frame(self, *args, **kwargs):
-        pass
 
     @abstractmethod
     def read(self, *args, **kwargs):
@@ -93,31 +81,18 @@ class VideoCapture(metaclass=ABCMeta):
     def height(self):
         pass
 
-    def __enter__(self):
-        self.open()
-        return self
 
-    def __exit__(self, *args, **kwargs):
-        self.close()
+@dataclass
+class CameraTaskResult:
+    frame: CameraFrame
+    no_more_frames: bool
 
 
-class ThreadedVideoCapture(Threadable, VideoCapture, metaclass=ABCMeta):
-    def __init__(self, non_skipping: bool, finite: bool, simulated_read_fps: float = None, *args, **kwargs):
+class ThreadedVideoCapture(ProcessHeavyTaskInBackground, VideoCapture, metaclass=ABCMeta):
+    def __init__(self, finite: bool, *args, **kwargs):
         # TODO: check types or args
         super().__init__(*args, **kwargs)
-        self._non_skipping = non_skipping
         self._finite = finite
-        self._simulated_read_fps = simulated_read_fps
-        self._current_img = None
-        self._fidx = None
-        self._running = False
-        self._capture_open_event = threading.Event()
-        self._first_frame_event = threading.Event()
-        self._new_frame_or_no_more_frames_event = threading.Event()
-        self._frame_yielded_event = threading.Event()
-        self._height = None
-        self._width = None
-        self._no_more_frames = False
         self._read_times = collections.deque([], maxlen=10)
         self._yield_times = collections.deque([], maxlen=10)
 
@@ -130,9 +105,6 @@ class ThreadedVideoCapture(Threadable, VideoCapture, metaclass=ABCMeta):
 
     @abstractmethod
     def _read_frame(self, *args, **kwargs) -> Img:
-        """
-        To read the next frame.
-        """
         pass
 
     @abstractmethod
@@ -147,114 +119,50 @@ class ThreadedVideoCapture(Threadable, VideoCapture, metaclass=ABCMeta):
     def _get_width(self) -> int:
         pass
 
-    def _close_immediately(self) -> None:
-        self._running = False
-        # Set the below to true so we don't get stuck blocking on it (which then means the run loop never finishes, and
-        # hence we can't close nicely).
-        # TODO: it'd be nice to make self._running an event somehow, so that our block_until(self._frame_yielded_event)
-        # will block until either _frame_yielded_event OR _running is false.
-        self._frame_yielded_event.set()
+    def setup_for_heavy_tasks(self, *args, **kwargs) -> None:
+        self._open_capture()
+        # OK, this call actually triggers the reading to begin:
+        self.add_next_task_in_background()
 
-    def _close_after_thread_finished(self) -> None:
-        self._read_times.clear()
-        self._yield_times.clear()
-        self._fidx = None
-        self._current_img = None
+    def run_heavy_task(self, task: Any, idx: int) -> None:
+        img = self._read_frame()
+        self._read_times.append(time.time())
+        if img is None:
+            if not self._finite:
+                logger.exception("Failed to read frame on an infinite stream - stopping.")
+            return CameraTaskResult(frame=None, no_more_frames=True)
 
-    def _run(self):
-        # With OpenCV, everything has to happen in one thread, so we need to open, read, and close, all in this loop.
-        self._running = True
-        logger.info("Trying to open camera")
-        try:
-            self._open_capture()
-            self._capture_open_event.set()
-        except:  # NOQA
-            logger.exception("Failed to open camera!")
-            self._running = False
+        # Otherwise, tell it to read again (i.e. read as fast as we can):
+        self.add_next_task_in_background()
 
-        self._frame_yielded_event.set()
-        last_new_frame_triggered = None
-        self._fidx = -1
-        while self._running:
-            try:
-                img = self._read_frame()
-                self._read_times.append(time.time())
-                # If we're non-skipping, we don't want to read until we've yielded the last one - usually when we're
-                # reading a video we don't want to skip frames. Note that we do this after reading (which can be
-                # expensive computationally)
-                if self._non_skipping:
-                    self._block_until(self._frame_yielded_event)
-                    self._frame_yielded_event.clear()
-                self._fidx += 1
-                self._current_img = img
-                self._first_frame_event.set()
-                # OK, if the user wants to simulate a specific read FPS, sleep here before we notify that there's a new
-                # frame:
-                t = time.time()
-                if self._simulated_read_fps and last_new_frame_triggered is not None:
-                    sleep_duration = 1 / self._simulated_read_fps - t
-                    if sleep_duration < 0:
-                        logger.warning(
-                            "You wanted to simulate an FPS of {fps} but reading from the camera is slower than this.",
-                            fps=self._simulated_read_fps,
-                        )
-                    else:
-                        time.sleep(sleep_duration)
-                # Cool, tell the world there's a new frame:
-                self._new_frame_or_no_more_frames_event.set()
-                last_new_frame_triggered = t
-            except NoMoreFrames:
-                # Don't alert about this if we're a finite capture (e.g. a video file), which should finish ...
-                if not self._finite:
-                    logger.exception("Failed to read frame!")
-                # Trigger one last new_frame_or_no_more_frames_event so our read() function can unblock ... note that we
-                # should really tidy this up a bit with condition etc. and don't give our events two purposes
-                self._no_more_frames = True
-                self._new_frame_or_no_more_frames_event.set()
-                break
-            except:  # NOQA
-                logger.exception("General read failure!")
-                break
+        # Done!
+        return CameraTaskResult(frame=CameraFrame(fidx=idx, img=img), no_more_frames=False)
 
-        # Close here in thread
-        self._running = False
+    def cleanup_from_heavy_tasks(self, did_setup) -> None:
         self._close_capture()
 
     @property
     def height(self):
-        self._block_until(self._capture_open_event, timeout=5)
+        self._block_until(self._setup_complete, timeout=5)
         return self._get_height()
 
     @property
     def width(self):
-        self._block_until(self._capture_open_event, timeout=5)
+        self._block_until(self._setup_complete, timeout=5)
         return self._get_width()
 
-    def current_frame(self, timeout: int = 5) -> CameraFrame:
-        self._block_until(self._first_frame_event, timeout=timeout)
-        if not self._running or self._no_more_frames or self._closed:
-            raise RuntimeError("Camera is closed or not running or has no more frames")
-        fidx, img = self._fidx, self._current_img
-        return CameraFrame(fidx=fidx, img=img)
-
     def read(self, timeout: int = 5) -> Iterator[CameraFrame]:
-        self._block_until(self._first_frame_event, timeout=timeout)
+        result: CameraTaskResult = None
         last_fidx = None
-        while True:
-            # Block until we get a new frame (so we don't read the same frame twice)
-            self._block_until(self._new_frame_or_no_more_frames_event, timeout=timeout)
-
-            # If we're finished, good:
-            if self._no_more_frames:
+        for result in self.consume_results(timeout=timeout):
+            if result.no_more_frames:
                 return
-
-            self._new_frame_or_no_more_frames_event.clear()
-            fidx, img = self._fidx, self._current_img
-            # check for frame skip:
+            frame = result.frame
+            # Check for frame skip:
             if last_fidx is not None:
-                if last_fidx == fidx:
+                if last_fidx == frame.fidx:
                     raise RuntimeError("Read the same frame twice - this shouldn't happen!")
-                elif (fidx - last_fidx) > 1:
+                elif (frame.fidx - last_fidx) > 1:
                     logger.debug(
                         (
                             "Frame skip! Last frame yielded was {last} and we're on {fidx} i.e. {n} were skipped. This "
@@ -262,13 +170,12 @@ class ThreadedVideoCapture(Threadable, VideoCapture, metaclass=ABCMeta):
                             "the camera framerate to avoid skips, or speed up your processing."
                         ),
                         last=last_fidx,
-                        fidx=fidx,
-                        n=fidx - last_fidx - 1,
+                        fidx=frame.fidx,
+                        n=frame.fidx - last_fidx - 1,
                     )
-            last_fidx = fidx
-            self._frame_yielded_event.set()
+            last_fidx = frame.fidx
             self._yield_times.append(time.time())
-            yield CameraFrame(fidx=fidx, img=img)
+            yield frame
 
     def read_fps(self) -> FPS:
         return _calculate_fps(self._read_times)
@@ -277,18 +184,41 @@ class ThreadedVideoCapture(Threadable, VideoCapture, metaclass=ABCMeta):
         return _calculate_fps(self._yield_times)
 
 
-class ThreadedOpenCVLiveVideoCapture(ThreadedVideoCapture):
+class ThreadedOpenCVVideoCapture(ThreadedVideoCapture):
+    def __init__(self, finite: bool, *args, **kwargs):
+        super().__init__(finite, *args, **kwargs)
+        self._vi = None
+        self._width = None
+        self._height = None
+
+    def _get_height(self) -> int:
+        assert self._height is not None, "Height prop should block until first frame, where self._height is set"
+        return self._height
+
+    def _get_width(self) -> int:
+        assert self._width is not None, "Width prop should block until first frame, where self._width is set"
+        return self._width
+
+    def _read_frame(self):
+        ok, bgr = self._vi.read()
+        if not ok:
+            return None
+        return Img.from_bgr(bgr)
+
+    def _close_capture(self):
+        if self._vi is not None:
+            self._vi.release()
+
+
+class ThreadedOpenCVLiveVideoCapture(ThreadedOpenCVVideoCapture):
     def __init__(self, device: Any, height: int = None, width: int = None, fps: int = None, api: int = None):
-        super().__init__(finite=False, non_skipping=False, simulated_read_fps=False)
+        super().__init__(finite=False)
         # TODO: check they're the right types
         self._device = device
         self._intended_height = height
         self._intended_width = width
         self._intended_fps = fps
         self._api = api
-        self._vi = None
-        self._width = None
-        self._height = None
 
     def _open_capture(self) -> bool:
         if platform.system().lower() == "windows" and self._api is None:
@@ -300,7 +230,7 @@ class ThreadedOpenCVLiveVideoCapture(ThreadedVideoCapture):
             )
             vi = cv2.VideoCapture(self._device, cv2.CAP_DSHOW)
         else:
-            vi = cv2.VideoCapture(self._device)
+            vi = cv2.VideoCapture(self._device, self._api)
 
         if not vi.isOpened():
             raise RuntimeError("Failed to open OpenCV camera")
@@ -334,63 +264,24 @@ class ThreadedOpenCVLiveVideoCapture(ThreadedVideoCapture):
         # the main loop, and hence we set it here for our main props to read.
         self._width = int(vi.get(cv2.CAP_PROP_FRAME_WIDTH))
         self._height = int(vi.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
         self._vi = vi
 
-    def _get_height(self) -> int:
-        assert self._height is not None, "height prop should block until first frame, where self._height is set"
-        return self._height
 
-    def _get_width(self) -> int:
-        assert self._width is not None, "width prop should block until first frame, where self._width is set"
-        return self._width
-
-    def _read_frame(self):
-        ok, bgr = self._vi.read()
-        if not ok:
-            raise RuntimeError("Couldn't get any more frames!")
-        return Img.from_bgr(bgr)
-
-    def _close_capture(self):
-        if self._vi is not None:
-            self._vi.release()
-
-
-class ThreadedOpenCVFileVideoCapture(ThreadedVideoCapture):
-    def __init__(self, path: Union[Path, str], simulated_read_fps: int = None):
+class ThreadedOpenCVFileVideoCapture(ThreadedOpenCVVideoCapture):
+    def __init__(self, path: Union[Path, str]):
         # TODO: check types or args
-        if simulated_read_fps is None:
-            super().__init__(finite=True, non_skipping=True, simulated_read_fps=None)
-        else:
-            super().__init__(finite=True, non_skipping=False, simulated_read_fps=None)
+        super().__init__(finite=True)
         if not isinstance(path, (Path, str)):
             raise ValueError("path must be a Path or str")
         self._path = str(path)
-        self._vi = None
 
     def _open_capture(self) -> bool:
-        self._vi = cv2.VideoCapture(self._path)
+        self._vi = cv2.VideoCapture(str(self._path))
+        if not self._vi.isOpened():
+            raise RuntimeError(f"Failed to open OpenCV camera at {self._path}")
         # See comment above why we're doing this here:
         self._width = int(self._vi.get(cv2.CAP_PROP_FRAME_WIDTH))
         self._height = int(self._vi.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-    def _get_height(self) -> int:
-        assert self._height is not None, "height prop should block until first frame, where self._height is set"
-        return self._height
-
-    def _get_width(self) -> int:
-        assert self._width is not None, "width prop should block until first frame, where self._width is set"
-        return self._width
-
-    def _read_frame(self):
-        ok, bgr = self._vi.read()
-        if not ok:
-            raise NoMoreFrames()
-        return Img.from_bgr(bgr)
-
-    def _close_capture(self):
-        if self._vi is not None:
-            self._vi.release()
 
 
 class VideoWriter(metaclass=ABCMeta):
@@ -399,26 +290,11 @@ class VideoWriter(metaclass=ABCMeta):
     """
 
     @abstractmethod
-    def open(self):
-        pass
-
-    @abstractmethod
-    def close(self, *args, **kwargs):
-        pass
-
-    @abstractmethod
     def write(self, img: Img):
         pass
 
-    def __enter__(self):
-        self.open()
-        return self
 
-    def __exit__(self, *args, **kwargs):
-        self.close()
-
-
-class ThreadedVideoWriter(Threadable, VideoWriter, metaclass=ABCMeta):
+class ThreadedVideoWriter(ProcessHeavyTaskInBackground, VideoWriter, metaclass=ABCMeta):
     """
     Class that writes video in a separate thread. The main change here is that we ensure we don't close while we're in
     the middle of writing.
@@ -467,7 +343,7 @@ class ThreadedVideoWriter(Threadable, VideoWriter, metaclass=ABCMeta):
     def _close_in_thread(self, *args, **kwargs):
         pass
 
-    def _close_immediately(self):
+    def _close_immediately_in_main_loop(self):
         # TODO: do we empty the queue?
         # Add a 'stop' item to the queue - this is our way of telling the _run function to stop processing. (It's a bit
         # of a hack for now to stop the _run method hanging on self._q.get(). TODO make this nicer = ) ) Note that this
@@ -476,9 +352,6 @@ class ThreadedVideoWriter(Threadable, VideoWriter, metaclass=ABCMeta):
         # Note that our parent Threadable will block until this main thread has finished
 
     # TODO: add the requested write FPS?
-
-    def _close_after_thread_finished(self) -> None:
-        pass
 
     def write_fps(self) -> FPS:
         return _calculate_fps(self._write_times)
@@ -496,6 +369,8 @@ class ThreadedOpenCVVideoWriter(ThreadedVideoWriter):
         self._vo = None
 
     def write(self, img: Img):
+        # TODO: take a copy of img? Otherwise the buffering may mean the underlying img is overwritten by the main
+        # process ...
         if img.isize.h != self.height or img.isize.w != self.width:
             # TODO: allow resizing?
             raise RuntimeError("img size doesn't match that of video!")

@@ -374,7 +374,7 @@ class Line(PolyLine):
 
     @staticmethod
     def from_xy(isize: ImgSize, xy: List, clip: bool = False, fix_numeric_type: bool = True) -> "Line":
-        polyline = super().from_xy(isize=isize, xy=xy, clip=clip, fix_numeric_type=fix_numeric_type)
+        polyline = PolyLine.from_xy(isize=isize, xy=xy, clip=clip, fix_numeric_type=fix_numeric_type)
         return Line(p0=polyline.pixels[0], p1=polyline.pixels[1], clip=clip, fix_numeric_type=fix_numeric_type)
 
     @property
@@ -418,7 +418,7 @@ class Polygon(PolyLine):
 
     @staticmethod
     def from_xy(isize: ImgSize, xy: List, clip: bool = False, fix_numeric_type: bool = True) -> "Polygon":
-        polyline = super().from_xy(isize=isize, xy=xy, clip=clip, fix_numeric_type=fix_numeric_type)
+        polyline = PolyLine.from_xy(isize=isize, xy=xy, clip=clip, fix_numeric_type=fix_numeric_type)
         return Polygon(pixels=polyline.pixels, clip=clip, fix_numeric_type=fix_numeric_type)
 
     @property
@@ -470,7 +470,7 @@ class Circle(Shape):
 
     @property
     def area(self) -> int:
-        return math.pi * self._radius ** 2
+        return math.pi * self._radius**2
 
     def copy(self) -> "Circle":
         return self.__class__(
