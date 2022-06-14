@@ -89,9 +89,9 @@ class CameraTaskResult:
 
 
 class ThreadedVideoCapture(ProcessHeavyTaskInBackground, VideoCapture, metaclass=ABCMeta):
-    def __init__(self, finite: bool, *args, **kwargs):
+    def __init__(self, finite: bool, max_buffer_size: int = -1, *args, **kwargs):
         # TODO: check types or args
-        super().__init__(*args, **kwargs)
+        super().__init__(max_result_queue_size=max_buffer_size, max_task_queue_size=max_buffer_size, *args, **kwargs)
         self._finite = finite
         self._read_times = collections.deque([], maxlen=10)
         self._yield_times = collections.deque([], maxlen=10)
@@ -122,7 +122,7 @@ class ThreadedVideoCapture(ProcessHeavyTaskInBackground, VideoCapture, metaclass
     def setup_for_heavy_tasks(self, *args, **kwargs) -> None:
         self._open_capture()
         # OK, this call actually triggers the reading to begin:
-        self.add_next_task_in_background()
+        # self.add_next_task_in_background()
 
     def run_heavy_task(self, task: Any, idx: int) -> None:
         img = self._read_frame()
@@ -133,7 +133,7 @@ class ThreadedVideoCapture(ProcessHeavyTaskInBackground, VideoCapture, metaclass
             return CameraTaskResult(frame=None, no_more_frames=True)
 
         # Otherwise, tell it to read again (i.e. read as fast as we can):
-        self.add_next_task_in_background()
+        # self.add_next_task_in_background()
 
         # Done!
         return CameraTaskResult(frame=CameraFrame(fidx=idx, img=img), no_more_frames=False)
@@ -154,7 +154,9 @@ class ThreadedVideoCapture(ProcessHeavyTaskInBackground, VideoCapture, metaclass
     def read(self, timeout: int = 5) -> Iterator[CameraFrame]:
         result: CameraTaskResult = None
         last_fidx = None
+        self.add_next_task_in_background()  # TODO: this is gross, but it starts it
         for result in self.consume_results(timeout=timeout):
+            self.add_next_task_in_background()  # TODO: start the next one (so we're always reading one frame behind)
             if result.no_more_frames:
                 return
             frame = result.frame
@@ -185,8 +187,8 @@ class ThreadedVideoCapture(ProcessHeavyTaskInBackground, VideoCapture, metaclass
 
 
 class ThreadedOpenCVVideoCapture(ThreadedVideoCapture):
-    def __init__(self, finite: bool, *args, **kwargs):
-        super().__init__(finite, *args, **kwargs)
+    def __init__(self, finite: bool, max_buffer_size: int = -1, *args, **kwargs):
+        super().__init__(finite, max_buffer_size=max_buffer_size, *args, **kwargs)
         self._vi = None
         self._width = None
         self._height = None
@@ -211,8 +213,16 @@ class ThreadedOpenCVVideoCapture(ThreadedVideoCapture):
 
 
 class ThreadedOpenCVLiveVideoCapture(ThreadedOpenCVVideoCapture):
-    def __init__(self, device: Any, height: int = None, width: int = None, fps: int = None, api: int = None):
-        super().__init__(finite=False)
+    def __init__(
+        self,
+        device: Any,
+        height: int = None,
+        width: int = None,
+        fps: int = None,
+        api: int = None,
+        max_buffer_size: int = -1,
+    ):
+        super().__init__(finite=False, max_buffer_size=max_buffer_size)
         # TODO: check they're the right types
         self._device = device
         self._intended_height = height
@@ -268,9 +278,9 @@ class ThreadedOpenCVLiveVideoCapture(ThreadedOpenCVVideoCapture):
 
 
 class ThreadedOpenCVFileVideoCapture(ThreadedOpenCVVideoCapture):
-    def __init__(self, path: Union[Path, str]):
+    def __init__(self, path: Union[Path, str], max_buffer_size: int = -1):
         # TODO: check types or args
-        super().__init__(finite=True)
+        super().__init__(finite=False, max_buffer_size=max_buffer_size)
         if not isinstance(path, (Path, str)):
             raise ValueError("path must be a Path or str")
         self._path = str(path)

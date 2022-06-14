@@ -1,3 +1,4 @@
+import warnings
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
 from functools import lru_cache
@@ -6,6 +7,7 @@ from typing import List
 import numpy as np
 from awareutils.vision.col import Col
 from awareutils.vision.img import Img, ImgType
+from awareutils.vision.mock import PILImageModule
 from awareutils.vision.shape import Circle, Line, Pixel, Polygon, PolyLine, Rectangle, Shape
 from loguru import logger
 
@@ -22,6 +24,24 @@ except ImportError:
 
 def _none_or_rgb(col: Col):
     return None if col is None else col.rgb
+
+
+def opacity_wrapper(func):
+    def wrapper(self, *args, **kwargs):
+        opacity = kwargs.get("opacity", None)
+        if opacity is not None:
+            if not (isinstance(opacity, float) and 0 <= opacity <= 1):
+                raise RuntimeError("Opacity must be a float in the range 0-1")
+            if opacity != 1:
+                # Back the image up, then draw on it, then merge them:
+                original_img = self.img.copy()
+                ret = func(self, *args, **kwargs)
+                self.alpha_composite(img=original_img, alpha=1 - opacity)
+                return ret
+
+        return func(self, *args, **kwargs)
+
+    return wrapper
 
 
 class Drawer(metaclass=ABCMeta):
@@ -61,27 +81,39 @@ class Drawer(metaclass=ABCMeta):
         return shape
 
     @abstractmethod
-    def pixel(self, pixel: Pixel, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def alpha_composite(self, img: Img, alpha: float) -> None:
         pass
 
     @abstractmethod
-    def rectangle(self, rectangle: Rectangle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def pixel(self, pixel: Pixel, *, fill: Col = None, outline: Col = None, width: int = 1, opacity: float = 1) -> None:
         pass
 
     @abstractmethod
-    def polyline(self, line: Line, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def rectangle(
+        self, rectangle: Rectangle, *, fill: Col = None, outline: Col = None, width: int = 1, opacity: float = 1
+    ) -> None:
         pass
 
     @abstractmethod
-    def line(self, line: Line, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def polyline(
+        self, line: Line, *, fill: Col = None, outline: Col = None, width: int = 1, opacity: float = 1
+    ) -> None:
         pass
 
     @abstractmethod
-    def polygon(self, polygon: Polygon, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def line(self, line: Line, *, fill: Col = None, outline: Col = None, width: int = 1, opacity: float = 1) -> None:
         pass
 
     @abstractmethod
-    def circle(self, circle: Circle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def polygon(
+        self, polygon: Polygon, *, fill: Col = None, outline: Col = None, width: int = 1, opacity: float = 1
+    ) -> None:
+        pass
+
+    @abstractmethod
+    def circle(
+        self, circle: Circle, *, fill: Col = None, outline: Col = None, width: int = 1, opacity: float = 1
+    ) -> None:
         pass
 
     @abstractmethod
@@ -96,10 +128,11 @@ class Drawer(metaclass=ABCMeta):
         col: Col = Col.named.aware_blue_light,
         line_type=cv2.LINE_AA,
         bottom_left_is_origin: bool = False,
+        opacity: float = 1,
     ) -> Rectangle:
         pass
 
-    def draw(self, shape: Shape, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def draw(self, shape: Shape, *, fill: Col = None, outline: Col = None, width: int = 1) -> None:
         method = getattr(self, shape.__class__.__name__.lower())
         return method(shape, fill=fill, outline=outline, width=width)
 
@@ -111,13 +144,23 @@ class PILDrawer(Drawer):
             raise RuntimeError("img must be a PIL Img")
         self._imgdraw = PILImageDraw.Draw(img.source)
 
-    def pixel(self, pixel: Pixel, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def alpha_composite(self, img: Img, alpha: float):
+        if not (isinstance(alpha, (int, float)) and 0 <= alpha <= 1):
+            raise RuntimeError("Alpha must be a float in the range 0-1")
+        warnings.warn("This is untested ...")
+        self.img.source = PILImageModule.blend(self.img.pil(), img.pil(), alpha)
+
+    @opacity_wrapper
+    def pixel(self, pixel: Pixel, *, fill: Col = None, outline: Col = None, width: int = 1, opacity: float = 1) -> None:
         pixel = self._check_args(shape=pixel, outline=outline, fill=fill, width=width)
         if fill is None:
             raise ValueError("Please provide a `fill` to draw a Pixel")
         self._imgdraw.point(xy=(pixel.x, pixel.y), fill=fill.rgb)
 
-    def rectangle(self, rectangle: Rectangle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    @opacity_wrapper
+    def rectangle(
+        self, rectangle: Rectangle, *, fill: Col = None, outline: Col = None, width: int = 1, opacity: float = 1
+    ) -> None:
         rectangle = self._check_args(shape=rectangle, outline=outline, fill=fill, width=width)
         self._imgdraw.rectangle(
             (rectangle.x0, rectangle.y0, rectangle.x1, rectangle.y1),
@@ -126,7 +169,10 @@ class PILDrawer(Drawer):
             width=width,
         )
 
-    def polyline(self, polyline: PolyLine, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    @opacity_wrapper
+    def polyline(
+        self, polyline: PolyLine, *, fill: Col = None, outline: Col = None, width: int = 1, opacity: float = 1
+    ) -> None:
         if fill is not None:
             raise ValueError("PolyLines have no fill - please provide the `outline` argument for colour")
         polyline = self._check_args(shape=polyline, outline=outline, fill=fill, width=width)
@@ -134,10 +180,14 @@ class PILDrawer(Drawer):
         pixels = [(p.x, p.y) for p in polyline.pixels]
         self._imgdraw.line(xy=pixels, fill=_none_or_rgb(outline), width=width, joint="curve")
 
-    def line(self, line: Line, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    @opacity_wrapper
+    def line(self, line: Line, *, fill: Col = None, outline: Col = None, width: int = 1, opacity: float = 1) -> None:
         return self.polyline(polyline=line, fill=fill, outline=outline, width=width)
 
-    def polygon(self, polygon: Polygon, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    @opacity_wrapper
+    def polygon(
+        self, polygon: Polygon, *, fill: Col = None, outline: Col = None, width: int = 1, opacity: float = 1
+    ) -> None:
         polygon = self._check_args(shape=polygon, outline=outline, fill=fill, width=width)
         # PILImageDraw.polygon doesn't support width, but line does. So use polygon unless we need an outline of
         # width != 1
@@ -148,7 +198,10 @@ class PILDrawer(Drawer):
             pixels = [(p.x, p.y) for p in polygon.pixels_closed]
             self._imgdraw.line(pixels, fill=outline.rgb, width=width)
 
-    def circle(self, circle: Circle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    @opacity_wrapper
+    def circle(
+        self, circle: Circle, *, fill: Col = None, outline: Col = None, width: int = 1, opacity: float = 1
+    ) -> None:
         circle = self._check_args(shape=circle, outline=outline, fill=fill, width=width)
         cx, cy, r = circle.center.x, circle.center.y, circle.radius
         self._imgdraw.ellipse(
@@ -158,6 +211,7 @@ class PILDrawer(Drawer):
             width=width,
         )
 
+    @opacity_wrapper
     def text(self, *args, **kwargs) -> Rectangle:
         raise NotImplementedError("TODO")
 
@@ -173,14 +227,29 @@ class OpenCVDrawer(Drawer):
         if not self.img.source.flags.c_contiguous:
             raise RuntimeError("Source array isn't contiguous, which breaks OpenCV drawing. This shouldn't happen ...")
 
-    def pixel(self, pixel: Pixel, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    def alpha_composite(self, img: Img, alpha: float):
+        if not (isinstance(alpha, (int, float)) and 0 <= alpha <= 1):
+            raise RuntimeError("Alpha must be a float in the range 0-1")
+
+        # Get arrays
+        method = "rgb" if self.img.itype == ImgType.RGB else "bgr"
+        current = getattr(self.img, method)()
+        new = getattr(img, method)()
+        # Merge 'em
+        self.img.source = cv2.addWeighted(current, 1 - alpha, new, alpha, 0)
+
+    @opacity_wrapper
+    def pixel(self, pixel: Pixel, *, fill: Col = None, outline: Col = None, width: int = 1, opacity: float = 1) -> None:
         self._contiguity_test()
         pixel = self._check_args(shape=pixel, outline=outline, fill=fill, width=width)
         if fill is None:
             raise ValueError("Please provide a `fill` to draw a Pixel")
         self.img.source[pixel.y, pixel.x, :] = self._col(fill)
 
-    def rectangle(self, rectangle: Rectangle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    @opacity_wrapper
+    def rectangle(
+        self, rectangle: Rectangle, *, fill: Col = None, outline: Col = None, width: int = 1, opacity: float = 1
+    ) -> None:
         self._contiguity_test()
         rectangle = self._check_args(shape=rectangle, outline=outline, fill=fill, width=width)
         # OK, OpenCV doesn't let us do fill and line separately, so let's do both.
@@ -194,7 +263,7 @@ class OpenCVDrawer(Drawer):
             cv2.rectangle(self.img.source, p0, p1, color=self._col(outline), thickness=width)
 
     def _polyline(
-        self, polyline: PolyLine, closed: bool, fill: Col = None, outline: Col = None, width: int = 1
+        self, polyline: PolyLine, *, closed: bool, fill: Col = None, outline: Col = None, width: int = 1
     ) -> None:
         self._contiguity_test()
         polyline = self._check_args(shape=polyline, outline=outline, fill=fill, width=width)
@@ -207,7 +276,10 @@ class OpenCVDrawer(Drawer):
         if outline is not None and (fill is None or outline != fill or width > 1):
             cv2.polylines(self.img.source, pts=pixels, isClosed=closed, color=self._col(outline), thickness=width)
 
-    def polyline(self, polyline: PolyLine, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    @opacity_wrapper
+    def polyline(
+        self, polyline: PolyLine, *, fill: Col = None, outline: Col = None, width: int = 1, opacity: float = 1
+    ) -> None:
         if fill is not None:
             raise ValueError("PolyLines have no fill - please provide the `outline` argument for colour")
         return self._polyline(polyline=polyline, closed=False, fill=None, outline=outline, width=width)
@@ -215,10 +287,16 @@ class OpenCVDrawer(Drawer):
     def line(self, *args, **kwargs) -> None:
         return self.polyline(*args, **kwargs)
 
-    def polygon(self, polygon: Polygon, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    @opacity_wrapper
+    def polygon(
+        self, polygon: Polygon, *, fill: Col = None, outline: Col = None, width: int = 1, opacity: float = 1
+    ) -> None:
         return self._polyline(polyline=polygon, closed=True, fill=fill, outline=outline, width=width)
 
-    def circle(self, circle: Circle, fill: Col = None, outline: Col = None, width: int = 1) -> None:
+    @opacity_wrapper
+    def circle(
+        self, circle: Circle, *, fill: Col = None, outline: Col = None, width: int = 1, opacity: float = 1
+    ) -> None:
         # Always fill first:
         center = (circle.center.x, circle.center.y)
         if fill is not None:
@@ -273,6 +351,7 @@ class OpenCVDrawer(Drawer):
             lines.append(this_line)
         return lines
 
+    @opacity_wrapper
     def text(
         self,
         text: str,
@@ -283,6 +362,7 @@ class OpenCVDrawer(Drawer):
         word_wrap_width: int = None,
         col: Col = Col.named.aware_blue_light,
         line_type=cv2.LINE_AA,
+        opacity: float = 1,
     ) -> Rectangle:
         self._contiguity_test()
         # Figure out how high font needs to be:

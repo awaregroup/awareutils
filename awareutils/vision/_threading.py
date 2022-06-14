@@ -25,6 +25,8 @@ class ProcessHeavyTaskInBackground(metaclass=ABCMeta):
         self._setup_complete = Event()
         self._event_run_loop_started = Event()
         self._event_run_loop_finished = Event()
+        self._max_result_queue_size = max_result_queue_size
+        self._max_task_queue_size = max_task_queue_size
         self._task_queue = Queue(max_task_queue_size)
         self._result_queue = Queue(max_result_queue_size)
         self._opened = False
@@ -49,7 +51,7 @@ class ProcessHeavyTaskInBackground(metaclass=ABCMeta):
         if self._stopping:
             logger.warning("Can't add more items now we've stopped")
             return
-        if self._task_queue.full():
+        if self._max_task_queue_size >= 0 and self._task_queue.qsize() >= self._max_task_queue_size:
             logger.warning(
                 (
                     "Task queue is full so will block - consider adding tasks slower, or having a larger"
@@ -81,7 +83,10 @@ class ProcessHeavyTaskInBackground(metaclass=ABCMeta):
                 if not task.stop_run_loop:
                     try:
                         result = self.run_heavy_task(task.data, idx=idx)
-                        if self._result_queue.full():
+                        if (
+                            self._max_result_queue_size >= 0
+                            and self._result_queue.qsize() >= self._max_result_queue_size
+                        ):
                             logger.warning(
                                 (
                                     "Result queue is full so will block - consider adding tasks slower, or having a"
@@ -107,11 +112,17 @@ class ProcessHeavyTaskInBackground(metaclass=ABCMeta):
         except:  # NOQA
             logger.exception("Failed running run loop")
 
-        # Clear the buffer:
-        while not self._task_queue.empty():
+        # Clear the buffers:
+        while self._task_queue.qsize() > 0:
             task = self._task_queue.get()
             if not task.stop_run_loop:
                 task.processed.set()
+        while self._result_queue.qsize() > 0:
+            try:
+                # Someone else could be consuming this, so ensure we don't hang if there's nothing there:
+                self._result_queue.get_nowait()
+            except Empty:
+                pass
 
         logger.debug("Thread loop finished")
         self._event_run_loop_finished.set()
@@ -130,7 +141,7 @@ class ProcessHeavyTaskInBackground(metaclass=ABCMeta):
         self._thread.start()
         self._opened = True
 
-    def close(self, timeout: float = None, force: bool = False) -> None:
+    def close(self, timeout: float = None) -> None:
         if self._event_run_loop_finished.is_set():
             return
         # Send a close task to the run loop - the user is responsible for cleaning anything up. For example, in OpenCV

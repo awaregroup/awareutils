@@ -333,6 +333,15 @@ class Img:
             return Img(source=source, itype=itype, metadata=metadata)
 
     @classmethod
+    def new_like(
+        cls,
+        img: "Img",
+        col: Col = Col.named.black,
+        metadata: Optional[Dict] = None,
+    ) -> "Img":
+        return cls.new(size=img.isize, itype=img.itype, col=col, metadata=metadata)
+
+    @classmethod
     def new_pil(
         cls,
         size: ImgSize,
@@ -360,7 +369,7 @@ class Img:
         return cls.new(size=size, itype=ImgType.RGB, metadata=metadata, col=col)
 
     @property
-    def draw(self) -> Union["Drawer"]:
+    def draw(self) -> "Drawer":
         raise NotImplementedError("You shouldn't be seeing this ... it should be overridden")
 
     def copy(self) -> "Img":
@@ -377,7 +386,7 @@ from awareutils.vision.draw import Drawer, OpenCVDrawer, PILDrawer
 
 
 @property
-def draw(self) -> Union[Drawer]:
+def draw(self) -> Drawer:
     if self._draw is None:
         if self.itype == ImgType.PIL:
             # TODO: don't hardcode last arg

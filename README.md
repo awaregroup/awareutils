@@ -30,8 +30,8 @@ The above installs everything including e.g. `OpenCV` and `Pillow`. If you know 
     - Reading from a live (USB) source, including nicely setting attributes like height etc.
     - Writing to a file. Eventually there'll be a nice way to get the 'right' fourcc without all the messing round.
 - One standard approach to coordinate systems. Note OpenCV vs numpy indexing or normalised vs not coordinates, etc.
-- Shapes ...
-- Nicer drawing functionality (and reasonably consistent between PIL and OpenCV) with real colours, multi-line and word-wrapped text, etc.
+- Standard shape definitions/utilities with (some) common calculations like IoU, intersection, etc. ...
+- Nicer drawing functionality (and reasonably consistent between PIL and OpenCV) with real colours, multi-line and word-wrapped text, transparent draws, etc.
 - A nicer GUI experience than `cv2.imshow` with built in support for nice things like padding to full screen, a 'console' for informational text messages, etc.
 
 You can see more about some of the design decisions in [./doc/decisions.md](./doc/decisions.md).

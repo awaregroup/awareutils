@@ -264,7 +264,11 @@ class OpenCVGUI(ProcessHeavyTaskInBackground):
                 self._vo.close()
 
     def draw(
-        self, img: Img, delay_ms: float = 0, console_text: Union[str, List[str]] = None, block: bool = False
+        self,
+        img: Img,
+        delay_ms: float = 0,
+        console_text: Union[ConsoleText, List[ConsoleText]] = None,
+        block: bool = False,
     ) -> bool:
         """
         Return true if GUI is closed (because of error or keyboard interaction). The block argument is used for
@@ -275,7 +279,12 @@ class OpenCVGUI(ProcessHeavyTaskInBackground):
         """
         if self._stopping:
             return True
-        console_text = console_text if console_text is None or isinstance(console_text, Iterable) else [console_text]
+        if console_text is not None:
+            if not isinstance(console_text, Iterable):
+                console_text = [console_text]
+            for t in console_text:
+                if not isinstance(t, ConsoleText):
+                    raise RuntimeError(f"console_text must be ConsoleText not {type(t)}")
         self.add_next_task_in_background(_DrawTask(img=img, delay_ms=delay_ms, console_texts=console_text), block=block)
         return False
 
