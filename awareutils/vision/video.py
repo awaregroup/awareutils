@@ -6,10 +6,10 @@ from abc import ABCMeta, abstractmethod, abstractproperty
 from dataclasses import dataclass
 from pathlib import Path
 from queue import Queue
-from typing import Any, Iterator, List, Union
+from typing import Any, Iterator, List, Tuple, Union
 
-from awareutils.vision._threading import ProcessHeavyTaskInBackground
-from awareutils.vision.img import Img
+from awareutils.vision._threading import Threadable
+from awareutils.vision.img import Img, ImgSize, ImgType
 from loguru import logger
 
 # Import only what we need
@@ -82,16 +82,10 @@ class VideoCapture(metaclass=ABCMeta):
         pass
 
 
-@dataclass
-class CameraTaskResult:
-    frame: CameraFrame
-    no_more_frames: bool
-
-
-class ThreadedVideoCapture(ProcessHeavyTaskInBackground, VideoCapture, metaclass=ABCMeta):
-    def __init__(self, finite: bool, max_buffer_size: int = -1, *args, **kwargs):
+class ThreadedVideoCapture(Threadable, VideoCapture, metaclass=ABCMeta):
+    def __init__(self, finite: bool, *args, **kwargs):
         # TODO: check types or args
-        super().__init__(max_result_queue_size=max_buffer_size, max_task_queue_size=max_buffer_size, *args, **kwargs)
+        super().__init__(*args, **kwargs)
         self._finite = finite
         self._read_times = collections.deque([], maxlen=10)
         self._yield_times = collections.deque([], maxlen=10)
@@ -119,47 +113,44 @@ class ThreadedVideoCapture(ProcessHeavyTaskInBackground, VideoCapture, metaclass
     def _get_width(self) -> int:
         pass
 
-    def setup_for_heavy_tasks(self, *args, **kwargs) -> None:
+    def setup_in_thread(self, *args, **kwargs) -> None:
         self._open_capture()
-        # OK, this call actually triggers the reading to begin:
-        # self.add_next_task_in_background()
 
-    def run_heavy_task(self, task: Any, idx: int) -> None:
+    def run_task_in_thread(self, task: Any, idx: int) -> Tuple[bool, CameraFrame]:
         img = self._read_frame()
         self._read_times.append(time.time())
         if img is None:
             if not self._finite:
                 logger.exception("Failed to read frame on an infinite stream - stopping.")
-            return CameraTaskResult(frame=None, no_more_frames=True)
+            return True, None
+        return False, CameraFrame(fidx=idx, img=img)
 
-        # Otherwise, tell it to read again (i.e. read as fast as we can):
-        # self.add_next_task_in_background()
-
-        # Done!
-        return CameraTaskResult(frame=CameraFrame(fidx=idx, img=img), no_more_frames=False)
-
-    def cleanup_from_heavy_tasks(self, did_setup) -> None:
+    def teardown_in_thread(self, did_setup) -> None:
         self._close_capture()
 
     @property
     def height(self):
-        self._block_until(self._setup_complete, timeout=5)
+        self.wait_until_setup_complete(timeout=5)
         return self._get_height()
 
     @property
     def width(self):
-        self._block_until(self._setup_complete, timeout=5)
+        self.wait_until_setup_complete(timeout=5)
         return self._get_width()
 
     def read(self, timeout: int = 5) -> Iterator[CameraFrame]:
-        result: CameraTaskResult = None
         last_fidx = None
-        self.add_next_task_in_background()  # TODO: this is gross, but it starts it
-        for result in self.consume_results(timeout=timeout):
-            self.add_next_task_in_background()  # TODO: start the next one (so we're always reading one frame behind)
-            if result.no_more_frames:
+        # Start us off:
+        result = self.add_next_task_and_get_result_of_previous(None, timeout=timeout)
+        assert result.first
+        if result.stopped:
+            return
+        while True:
+            result = self.add_next_task_and_get_result_of_previous(None, timeout=timeout)
+            frame: CameraFrame = result.result
+            if result.stopped or frame is None:
                 return
-            frame = result.frame
+
             # Check for frame skip:
             if last_fidx is not None:
                 if last_fidx == frame.fidx:
@@ -187,8 +178,8 @@ class ThreadedVideoCapture(ProcessHeavyTaskInBackground, VideoCapture, metaclass
 
 
 class ThreadedOpenCVVideoCapture(ThreadedVideoCapture):
-    def __init__(self, finite: bool, max_buffer_size: int = -1, *args, **kwargs):
-        super().__init__(finite, max_buffer_size=max_buffer_size, *args, **kwargs)
+    def __init__(self, finite: bool, *args, **kwargs):
+        super().__init__(finite, *args, **kwargs)
         self._vi = None
         self._width = None
         self._height = None
@@ -220,9 +211,8 @@ class ThreadedOpenCVLiveVideoCapture(ThreadedOpenCVVideoCapture):
         width: int = None,
         fps: int = None,
         api: int = None,
-        max_buffer_size: int = -1,
     ):
-        super().__init__(finite=False, max_buffer_size=max_buffer_size)
+        super().__init__(finite=False)
         # TODO: check they're the right types
         self._device = device
         self._intended_height = height
@@ -278,9 +268,9 @@ class ThreadedOpenCVLiveVideoCapture(ThreadedOpenCVVideoCapture):
 
 
 class ThreadedOpenCVFileVideoCapture(ThreadedOpenCVVideoCapture):
-    def __init__(self, path: Union[Path, str], max_buffer_size: int = -1):
+    def __init__(self, path: Union[Path, str]):
         # TODO: check types or args
-        super().__init__(finite=False, max_buffer_size=max_buffer_size)
+        super().__init__(finite=True)
         if not isinstance(path, (Path, str)):
             raise ValueError("path must be a Path or str")
         self._path = str(path)
@@ -304,7 +294,7 @@ class VideoWriter(metaclass=ABCMeta):
         pass
 
 
-class ThreadedVideoWriter(ProcessHeavyTaskInBackground, VideoWriter, metaclass=ABCMeta):
+class ThreadedVideoWriter(Threadable, VideoWriter, metaclass=ABCMeta):
     """
     Class that writes video in a separate thread. The main change here is that we ensure we don't close while we're in
     the middle of writing.
@@ -315,53 +305,34 @@ class ThreadedVideoWriter(ProcessHeavyTaskInBackground, VideoWriter, metaclass=A
 
     def __init__(self):
         super().__init__()
-        self._q = Queue()
         self._write_times = collections.deque([], maxlen=10)
-        self._running = False
+
+    def setup_in_thread(self, *args, **kwargs):
+        self._open_in_thread()
+
+    def run_task_in_thread(self, task: Any, idx: int) -> Tuple[bool, Any]:
+        self._write_in_thread(task)
+        return False, None
+
+    def teardown_in_thread(self, did_setup) -> None:
+        if did_setup:
+            self._close_in_thread()
 
     @abstractmethod
     def _open_in_thread(self, *args, **kwargs):
         pass
 
-    def write(self, img: Img):
-        if not self._running:
-            raise RuntimeError("ThreadedVideoWriter is not running, so can't write to it. Check the logs.")
-        self._q.put((False, img))  # First arg is whether we want to stop or not.
-
     @abstractmethod
     def _write_in_thread(self, img: Img):
         pass
-
-    def _run(self):
-        self._running = True
-        try:
-            self._open_in_thread()
-            while self._running:  # Note - this isn't interruptible as we clear with a task
-                stop, img = self._q.get()
-                # TODO: errors if q is getting too long
-                if stop:
-                    break
-                else:
-                    self._write_in_thread(img)
-                    self._write_times.append(time.time())
-        except:  # NOQA
-            logger.exception("Failed while writing!")
-            self._running = False
-        self._close_in_thread()
 
     @abstractmethod
     def _close_in_thread(self, *args, **kwargs):
         pass
 
-    def _close_immediately_in_main_loop(self):
-        # TODO: do we empty the queue?
-        # Add a 'stop' item to the queue - this is our way of telling the _run function to stop processing. (It's a bit
-        # of a hack for now to stop the _run method hanging on self._q.get(). TODO make this nicer = ) ) Note that this
-        # has the side effect of clearing out the queue before we close (as we're putting on the end)
-        self._q.put((True, None))
-        # Note that our parent Threadable will block until this main thread has finished
-
-    # TODO: add the requested write FPS?
+    def write(self, img: Img):
+        self.add_next_task_and_get_result_of_previous(data=img)
+        self._write_times.append(time.time())
 
     def write_fps(self) -> FPS:
         return _calculate_fps(self._write_times)
@@ -378,21 +349,34 @@ class ThreadedOpenCVVideoWriter(ThreadedVideoWriter):
         self.fps = fps
         self._vo = None
 
-    def write(self, img: Img):
-        # TODO: take a copy of img? Otherwise the buffering may mean the underlying img is overwritten by the main
-        # process ...
-        if img.isize.h != self.height or img.isize.w != self.width:
-            # TODO: allow resizing?
-            raise RuntimeError("img size doesn't match that of video!")
-        return super().write(img)
-
     def _open_in_thread(self, *args, **kwargs):
-        self._vo = cv2.VideoWriter(self.path, cv2.VideoWriter_fourcc(*"XVID"), self.fps, (self.width, self.height))
+        self._vo = cv2.VideoWriter(str(self.path), cv2.VideoWriter_fourcc(*"XVID"), self.fps, (self.width, self.height))
         if not self._vo.isOpened():
             raise RuntimeError("Failed to open writer!")
 
     def _write_in_thread(self, img: Img):
+        # TODO: take a copy of img? Otherwise the buffering may mean the underlying img is overwritten by the main
+        # process ...
+        print("ACTUALLY WRITING")
+        if img.isize.h != self.height or img.isize.w != self.width:
+            # TODO: allow resizing?
+            raise RuntimeError("img size doesn't match that of video!")
         self._vo.write(img.bgr())
 
     def _close_in_thread(self):
         self._vo.release()
+
+
+if __name__ == "__main__":
+
+    logger.enable("awareutils")
+    img = Img.new(size=ImgSize(h=1080, w=1920), itype=ImgType.BGR)
+    fpath = Path("tmp.avi")
+    with ThreadedOpenCVVideoWriter(path=fpath, height=1080, width=1920, fps=30) as vo:
+        for _ in range(3):
+            vo.write(img)
+    print("Done")
+    # print(vo.is_alive())
+    # assert fpath.exists()
+    time.sleep(1)
+    # print(vo.is_alive())

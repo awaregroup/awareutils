@@ -4,7 +4,7 @@
 
 We force keyword arguments for most things, as it's too easy to get `x` and `y` (or `width` and `height`) the wrong way round, especially given `OpenCV` is a bit confusing in this regard. It's maybe a little tedious if you know what you're doing, but it reduces bugs and makes your code more readable for others.
 
-## Coordinates are complicated ...
+## Coordinates are complicated
 
 Think about the box `x0, y0, x1, y1 = 0, 0, 1, 1` - is that a `1x1` or a `2x2` box? Well, it's both, which can be messy. If you do `img[y0:y1, x0:x1, :] = 1` it's only a `1x1` box. But if you do `cv2.rectangle(img, (x0, y0), (x1, y1), (1, 1, 1))` then it's a `2x2` box. If this were only drawing boxes, no major - but it can mean messy calculations etc. when you're dealing at the maximum of the dimension. For example, if your image is `1920` wide, is `x1 = 1920` valid, or should `x1 = 1919` be the last value? As above, either can be correct.
 
@@ -73,7 +73,7 @@ So, what do we do? Well:
 
 ### OpenCV and PIL?
 
-Yup, 'cos some libraries pick one or the other, so it's nice to be able to use one or the other under the hood. For now, let's see how it goes, and if it's too painful, we'd probably go with just OpenCV. 
+Yup, 'cos some libraries pick one or the other, so it's nice to be able to use one or the other under the hood. For now, let's see how it goes, and if it's too painful, we'd probably go with just OpenCV.
 
 Assuming we're going with both, how do we allow people to pick just one without having them both imported? Well, see `awareutils/vision/mock.py` and it's use in `awareutils/vision/img.py` - basically, if we can't import OpenCV or PIL, we continue as fine until it's attempted to be used, in which case the `Mock`s `__getattr__` fires an exception.
 
@@ -88,3 +88,14 @@ We chose the following spellings and encourage their use as a) it adds consisten
 - `img` (vs `img|image`)
 - `col` (vs `col|color|colour`)
 - `fidx` to refer to the frame index (as opposed to `fidx|idx|i|index` etc.)
+
+### Threading
+
+So generally you get some nice performance gains if your main thread isn't blocked decoding/encoding frames/video. Turns out, OpenCV in threads is painful, because it insists on it all being in the same thread. So, comments on our threading solution:
+
+1. Can handle setting up/tearing down resources from within the thread, as well as running the tasks.
+1. We need to handle user input during the running (e.g. interactions in the OpenCV GUI).
+1. I don't want code that's hard to understand with weird race conditions, even if it's a bit faster. And, I've written a bunch like this while developing it! Simple is best.
+1. Generally, we're only wanting to do one task in the thread e.g. the main loop generates an image, and we want to hand off the writing of it to a video so we don't block the main loop. We don't want to process a big backlog or anything like that ... just do one thing in the background, and report back. Given the above comments about simplicity (and things I've tried that fail for various reasons), it's better to explcitly only handle a single task at a time (instead of e.g. a loop and handle multiple items, or handing, or purging it etc.)
+
+I tried various approaches (with queues etc.) but often got hung up on the second point (allowing a task to kill the thread at some later point we don't know) or keeping it simple - I often got stuck in race conditions e.g. "Ah, we get stuck waiting for an item of the queue here if X happens". It was painful. So, instead we keep things simple as per `awareutils.vision.threading.Threadable`. The main secret sauce is having custom events we act on, but whose wait can be interrupted by a single 'stopping' event. This way, we don't get hung up waiting when we should be closing (and in a simpler fashion than e.g. adding a 'stop' task onto the end of a queue and hoping nothing blocks before then). If the amount of time writing/debugging the code is anything to go by (after finishing thinking about it) then this was a good move - it largely worked first time it was written, with no thread-related problems. Hopefully this proves true in terms of extending and maintaining the code.

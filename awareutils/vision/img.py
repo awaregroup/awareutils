@@ -138,7 +138,7 @@ class Img:
         self._metadata = value
 
     @staticmethod
-    def _pil_to_numpy_rgb(img: PILImageModule.Image) -> np.ndarray:
+    def _pil_to_numpy_rgb(img: "PILImageModule.Image") -> np.ndarray:
         """
         See https://uploadcare.com/blog/fast-import-of-pillow-images-to-numpy-opencv-arrays/ Can be 2-3x faster.
         """
@@ -312,7 +312,7 @@ class Img:
         return cls(source=array, itype=ImgType.RGB, metadata=metadata, make_arrays_contiguous=make_arrays_contiguous)
 
     @classmethod
-    def from_pil(cls, pil: PILImageModule.Image, metadata: Optional[Dict] = None):
+    def from_pil(cls, pil: "PILImageModule.Image", metadata: Optional[Dict] = None):
         return cls(source=pil, itype=ImgType.PIL, metadata=metadata)
 
     @classmethod

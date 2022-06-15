@@ -2,6 +2,7 @@
 
 - Tests!
 - Allow drawing in normalized coordinates? That'd be useful ...
+- Add a threaded draw class? Drawing is often slow, and it should be easy enough to proxy 'draw X' tasks through, and then have a 'render' method or something, that blocks until all drawing is done, or something like that.
 - Add a pi camera class
 - Push to pypi
 - Build pipeline in github.
@@ -9,13 +10,10 @@
 - check out <https://github.com/bunkahle/PILasOPENCV> - might make opencv vs PIL easier.
 - check out <https://github.com/PySimpleGUI/PySimpleGUI/blob/master/DemoPrograms/Demo_OpenCV_Simple_GUI.py> for GUI.
 - Drawing:
-  - Transparency?
-  - Add shape drawing methods
-    - arrow? maybe a few other shapes.
+  - Add more shape drawing methods e.g. arrow? We commonly use that.
 - Ensure all open/close context managers don't get opened twice
 - Why are we having to write `-1` in the rectangle logic in opencv GUI? I don't want the user (me in this case) worrying about that.
 - OpenCV:
-  - All thready things - ensure the queue doesn't get too big. Log if it's growing. Deque to max it?
   - Automatically search USB devices if you don't know which number (as it's a bit weird) ...
   - Automatically search supported fourcc in videowriter (or does -1 do that?). At least find some good fourcc defaults.
   - A dynamic FPS video writer? Not sure if it's possible, but if we change the FPS we're writing, how do we tell the video the FPS has changed? <https://github.com/iizukanao/picam> talks of VFR but doesn't seem like it's supported in opencv etc. Or see here <https://forums.raspberrypi.com/viewtopic.php?t=98541> - maybe just save the pts/timecodes (raspberry pi is easy, less sure about opencv etc., but I guess we could do it in our `write` method and hope linux clocks are OK and nothing's blocking!) and then use a tool like `mkvmerge` to create a new VFR video. (Note that reading that back in with opencv won't work, I suspect, as we just get the next frame, and not the pts etc. I guess we could also preprocess with something like ffmpeg to extract the vfr timecodes, and load them in parallel from opencv and do the necessary delays etc.) See <https://github.com/kkroening/ffmpeg-python/issues/246>
@@ -24,6 +22,7 @@
     - Trackbars. Test mouse callback. Add mouse wheel callback.
     - Have default mouse + wheel callback do zooming? Or maybe some default features like zooming (trigger with 'z' and use selectROI to zoom in), or 's' to save the image, or maybe some nice way to say "just record this whole window to a video here please".
 - Add fast video seeking to FileCapture.
+- Add a test that checks non-PIL functionality works without PIL installed, and likewise with opencv and piexif
 - Shape:
   - `shape.bounding_box` method
   - `shape.mask` method

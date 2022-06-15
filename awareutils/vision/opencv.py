@@ -2,11 +2,11 @@ import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, List, Union
+from typing import Any, Callable, List, Tuple, Union
 
 import cv2
 import numpy as np
-from awareutils.vision._threading import ProcessHeavyTaskInBackground
+from awareutils.vision._threading import Threadable
 from awareutils.vision.col import Col
 from awareutils.vision.img import Img, ImgSize
 from awareutils.vision.shape import Pixel, Rectangle
@@ -36,7 +36,7 @@ def default_keyboard_callback(self: "OpenCVGUI", key: int) -> bool:
     return False
 
 
-class OpenCVGUI(ProcessHeavyTaskInBackground):
+class OpenCVGUI(Threadable):
     """
     A GUI built on OpenCV primitives that's:
         a) A little easier to use with common nice things (like a text 'console' area etc.), and
@@ -90,7 +90,7 @@ class OpenCVGUI(ProcessHeavyTaskInBackground):
         if self._mouse_callback is not None:
             return self._mouse_callback(self, event, x, y)
 
-    def setup_for_heavy_tasks(self):
+    def setup_in_thread(self):
         pass
 
     def _setup_window(self, isize: ImgSize):
@@ -199,7 +199,7 @@ class OpenCVGUI(ProcessHeavyTaskInBackground):
             )
             self._vo.open()
 
-    def run_heavy_task(self, task: _DrawTask, idx: int):
+    def run_task_in_thread(self, task: _DrawTask, idx: int) -> Tuple[bool, Any]:
         """
         Return true if we should quit the drawing loop (based on keyboard interaction)
         """
@@ -250,14 +250,16 @@ class OpenCVGUI(ProcessHeavyTaskInBackground):
         if self._keyboard_callback is not None:
             close = self._keyboard_callback(self, k)
             if close:
-                raise StopIteration()
+                return True, None
 
         # Save if needed:
         if self._vo is not None:
             # Write a copy so self._out doesn't get overwritten
             self._vo.write(self._out.copy())
 
-    def cleanup_from_heavy_tasks(self, did_setup) -> None:
+        return False, None
+
+    def teardown_in_thread(self, did_setup) -> None:
         if did_setup:
             cv2.destroyWindow(self._window_name)
             if self._vo is not None:
@@ -268,7 +270,7 @@ class OpenCVGUI(ProcessHeavyTaskInBackground):
         img: Img,
         delay_ms: float = 0,
         console_text: Union[ConsoleText, List[ConsoleText]] = None,
-        block: bool = False,
+        # block: bool = False,
     ) -> bool:
         """
         Return true if GUI is closed (because of error or keyboard interaction). The block argument is used for
@@ -277,31 +279,28 @@ class OpenCVGUI(ProcessHeavyTaskInBackground):
         point of threading.) In other cases where the loop is 'slow', e.g. we're drawing as fast as we can read a frame
         from a video, it's fine to call it non-blocking.
         """
-        if self._stopping:
-            return True
         if console_text is not None:
             if not isinstance(console_text, Iterable):
                 console_text = [console_text]
             for t in console_text:
                 if not isinstance(t, ConsoleText):
                     raise RuntimeError(f"console_text must be ConsoleText not {type(t)}")
-        self.add_next_task_in_background(_DrawTask(img=img, delay_ms=delay_ms, console_texts=console_text), block=block)
-        return False
+        result = self.add_next_task_and_get_result_of_previous(
+            _DrawTask(img=img, delay_ms=delay_ms, console_texts=console_text)
+        )
+        return result.stopped
 
 
 if __name__ == "__main__":
 
     logger.enable("awareutils")
     with OpenCVGUI(
-        isize=ImgSize(h=1080, w=1920),
-        window_name="main",
         min_console_ppn=0.3,
         padding_col=Col(30, 30, 30),
         console_col=Col.named.black,
         console_font=cv2.FONT_HERSHEY_DUPLEX,
     ) as gui:
-        finished = False
-        while not finished:
+        while True:
             img = Img.from_bgr(np.random.randint(low=0, high=255, size=(1080, 1920, 3), dtype=np.uint8))
             finished = gui.draw(
                 img,
@@ -313,4 +312,5 @@ if __name__ == "__main__":
                     ConsoleText(text="look this line is really long so it'll automatically be word wrapped!"),
                 ],
             )
-            time.sleep(0.1)
+            if finished:
+                break
