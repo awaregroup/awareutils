@@ -70,6 +70,7 @@ class _Task:
     result: Any
     processed: Event
     run: bool
+    run_says_stop: bool
 
 
 @dataclass
@@ -119,7 +120,9 @@ class Threadable(metaclass=ABCMeta):
     def teardown_in_thread(self, did_setup) -> None:
         pass
 
-    def add_next_task_and_get_result_of_previous(self, data: Any = None, timeout: float = None) -> _Result:
+    def add_next_task_and_get_result_of_previous(
+        self, data: Any = None, timeout: float = None, block: bool = False
+    ) -> _Result:
         """
         This is our main method of interaction. The intended use case is:
 
@@ -143,36 +146,48 @@ class Threadable(metaclass=ABCMeta):
             data=data,
             result=None,
             # Don't let stopping interrupt this:
-            processed=Event(),  # self._stopping.create_interruptible_event(),
+            processed=Event(),
             run=False,
+            run_says_stop=False,
         )
 
-        # If it's our first run, just add it and return:
-        if self._next_task_to_process is None:
+        if block:
+            # Update idx if needed:
+            if self._next_task_to_process is not None:
+                next_task.idx = self._next_task_to_process.idx + 1
             with self._next_task_setting_lock:
                 self._next_task_to_process = next_task
-                # self._next_task_ready.clear()
                 self._next_task_ready.set()
-            return _Result(idx=0, first=True, stopped=False, result=None)
+            current_task = self._next_task_to_process
+            ret = current_task.processed.wait(timeout=timeout)
+            if not ret:
+                raise RuntimeError("Timed out waiting for previous task to be processed!")
+            return _Result(
+                idx=current_task.idx, first=False, stopped=current_task.run_says_stop, result=current_task.result
+            )
 
-        # Otherwise, wait until we've finished processing the last one
-        current_task = self._next_task_to_process
-        assert current_task is not None
-        print("waiting for current task to be processed", current_task)
-        ret = current_task.processed.wait(timeout=timeout)
-        print("done waiting for current task to be processed", current_task)
-        if not ret:
-            raise RuntimeError("Timed out waiting for previous task to be processed!")
+        else:
 
-        result = current_task.result
-        # self._stopping.remove_interruptible_event(current_task.processed_or_stopped)
-        with self._next_task_setting_lock:
-            next_task.idx = current_task.idx + 1
-            print("adding new task", next_task)
-            self._next_task_to_process = next_task
-            # self._next_task_ready.clear()
-            self._next_task_ready.set()
-        return _Result(idx=current_task.idx, first=False, stopped=False, result=result)
+            # If it's our first run, just add it and return:
+            if self._next_task_to_process is None:
+                with self._next_task_setting_lock:
+                    self._next_task_to_process = next_task
+                    self._next_task_ready.set()
+                return _Result(idx=0, first=True, stopped=False, result=None)
+
+            # Otherwise, wait until we've finished processing the last one
+            current_task = self._next_task_to_process
+            assert current_task is not None
+            ret = current_task.processed.wait(timeout=timeout)
+            if not ret:
+                raise RuntimeError("Timed out waiting for previous task to be processed!")
+
+            result = current_task.result
+            with self._next_task_setting_lock:
+                next_task.idx = current_task.idx + 1
+                self._next_task_to_process = next_task
+                self._next_task_ready.set()
+            return _Result(idx=current_task.idx, first=False, stopped=current_task.run_says_stop, result=result)
 
     def run(self) -> None:
         try:
@@ -190,82 +205,44 @@ class Threadable(metaclass=ABCMeta):
             while True:  # not self._stopping.is_set():
 
                 # Wait for a new task or for a stopping interrupt:
-                print("waiting ...", self._stopping.is_set())
                 stopping, _ = self._next_task_ready.wait(clear=True)
 
                 # OK, at this stage, either we have a new task we need to process, or we got told to stop (in which case
                 # the task is an old one). Validate that:
                 task = self._next_task_to_process
-                print("task", task, "<", stopping, self._stopping.is_set())
                 if stopping:
                     assert self._stopping.is_set()
-                if stopping:  # or self._stopping.is_set():
+                if stopping or self._stopping.is_set():
                     # OK, the current task won't actually be new, as we interrupted before it was ready
                     if not task.run and not task.processed.set():
                         raise RuntimeError("This task should be run")
                 else:
                     if task.run or task.processed.is_set():
-                        print("hello")
-                        print(task.run, task.processed.is_set(), self._stopping.is_set())
-                        raise RuntimeError("This task should not already have been run")
+                        raise RuntimeError("This task should not have been run")
 
                 # Process it:
-                print(self.__class__.__name__, stopping, task.idx, task.processed.is_set())
-                print("xxxx")
                 if not task.run:
-                    task_says_stop = False
+                    run_says_stop = False
                     try:
                         logger.debug(f"Processing task #{task.idx}")
-                        task_says_stop, result = self.run_task_in_thread(task.data, idx=task.idx)
+                        run_says_stop, result = self.run_task_in_thread(task.data, idx=task.idx)
                         task.result = result
+                        task.run_says_stop = run_says_stop
                     except:  # NOQA
                         logger.exception("User-defined run_task_in_thread failed. Stopping.")
-                        task_says_stop = True
+                        run_says_stop = True
                     # Update our state:
                     task.run = True
                     task.processed.set()
 
                     # Stop if we need:
-                    if task_says_stop:
+                    if run_says_stop:
                         logger.info("User task requested stop")
                         self._stopping.set()
 
                 # Leave the loop when we're done:
                 if self._stopping.is_set() and task.run:
                     break
-
-                # # Now, process the task if we need to. We always finish processing all tasks (even if we're stopping)
-                # if not stopping:
-                #     if task.processed_or_stopped.is_set() and not task.processed_or_stopped._interrupted:
-                #         raise RuntimeError(
-                #             "This shouldn't happen - the task has already been processed without being interrupted."
-                #         )
-                #     if task.run:
-                #         # We can see this again if a stop is called
-                #         stopping = True
-                #     else:
-                #         try:
-                #             logger.info(f"Writing {task.idx}")
-                #             stopping, result = self.run_task_in_thread(task.data, idx=idx)
-                #             task.result = result
-                #             task.processed_or_stopped.set()
-                #             task.run = True
-                #         except:  # NOQA
-                #             logger.exception("User-defined run_task_in_thread failed. Stopping.")
-                #             task.processed_or_stopped.set()
-                #             stopping = True
-
-                # if stopping or self._stopping.is_set():
-                #     self._stopping.set()  # As this wasn't set in the above loop
-                #     logger.info("Tearing down in thread")
-                #     try:
-                #         self.teardown_in_thread(did_setup=self._setup_complete.is_set())
-                #     except:  # NOQA
-                #         logger.exception("User-defined teardown_in_thread failed. Stopping.")
-                #         # Don't need to do anything here, as we're already in the process of stopping
-
-                #     print("BREAKING")
-                #     break  # Redundant, but be safe
 
             # Tear down:
             try:
@@ -303,17 +280,13 @@ class Threadable(metaclass=ABCMeta):
         # assert False
         if self._closed:
             return
-        # task = self._next_task_to_process
-        # if task is not None:
-        #     logger.info("Waiting for last task to finish before closing")
-        #     task.processed.wait(timeout=timeout)
-        logger.info("CLOSING")
+        logger.info("Closing")
         self._stopping.set()
         # Wait for the loop to finish (including after tearing down):
         if not self._run_loop_finished.wait(timeout=timeout):
             raise RuntimeError(f"Didn't close within {timeout} seconds!")
-        print("closed???")
         self._closed = True
+        logger.info("Closed")
 
     def __enter__(self):
         self.open()

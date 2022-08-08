@@ -89,6 +89,7 @@ class ThreadedVideoCapture(Threadable, VideoCapture, metaclass=ABCMeta):
         self._finite = finite
         self._read_times = collections.deque([], maxlen=10)
         self._yield_times = collections.deque([], maxlen=10)
+        self._started_reading = False
 
     @abstractmethod
     def _open_capture(self, *args, **kwargs) -> bool:
@@ -139,6 +140,10 @@ class ThreadedVideoCapture(Threadable, VideoCapture, metaclass=ABCMeta):
         return self._get_width()
 
     def read(self, timeout: int = 5) -> Iterator[CameraFrame]:
+        if self._started_reading:
+            raise RuntimeError("Don't `read` from the same video object twice - close the old one and open a new one")
+        self._started_reading = True
+
         last_fidx = None
         # Start us off:
         result = self.add_next_task_and_get_result_of_previous(None, timeout=timeout)
@@ -357,7 +362,6 @@ class ThreadedOpenCVVideoWriter(ThreadedVideoWriter):
     def _write_in_thread(self, img: Img):
         # TODO: take a copy of img? Otherwise the buffering may mean the underlying img is overwritten by the main
         # process ...
-        print("ACTUALLY WRITING")
         if img.isize.h != self.height or img.isize.w != self.width:
             # TODO: allow resizing?
             raise RuntimeError("img size doesn't match that of video!")
@@ -375,8 +379,4 @@ if __name__ == "__main__":
     with ThreadedOpenCVVideoWriter(path=fpath, height=1080, width=1920, fps=30) as vo:
         for _ in range(3):
             vo.write(img)
-    print("Done")
-    # print(vo.is_alive())
-    # assert fpath.exists()
-    time.sleep(1)
-    # print(vo.is_alive())
+    # time.sleep(1)

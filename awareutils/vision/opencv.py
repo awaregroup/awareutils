@@ -270,7 +270,7 @@ class OpenCVGUI(Threadable):
         img: Img,
         delay_ms: float = 0,
         console_text: Union[ConsoleText, List[ConsoleText]] = None,
-        # block: bool = False,
+        block: bool = False,
     ) -> bool:
         """
         Return true if GUI is closed (because of error or keyboard interaction). The block argument is used for
@@ -286,7 +286,7 @@ class OpenCVGUI(Threadable):
                 if not isinstance(t, ConsoleText):
                     raise RuntimeError(f"console_text must be ConsoleText not {type(t)}")
         result = self.add_next_task_and_get_result_of_previous(
-            _DrawTask(img=img, delay_ms=delay_ms, console_texts=console_text)
+            _DrawTask(img=img, delay_ms=delay_ms, console_texts=console_text), block=block
         )
         return result.stopped
 
